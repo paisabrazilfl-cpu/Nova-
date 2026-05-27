@@ -1496,13 +1496,21 @@ function populateVoicesDropdown() {
 // ── TTS ──────────────────────────────────────────────────────────────────────
 function speak(text) {
   if (!settings.ttsEnabled || !text.trim() || !window.speechSynthesis) return;
+  try { speechSynthesis.resume(); } catch {}
   speechSynthesis.cancel();
-  const utt = new SpeechSynthesisUtterance(text);
-  utt.rate = settings.speechRate || 1.05;
-  if (selectedVoice) utt.voice = selectedVoice;
-  utt.onend = () => {};
-  utt.onerror = () => {};
-  speechSynthesis.speak(utt);
+  const doSpeak = () => {
+    const utt = new SpeechSynthesisUtterance(text);
+    utt.rate = settings.speechRate || 1.05;
+    if (selectedVoice) utt.voice = selectedVoice;
+    utt.onend = () => {};
+    utt.onerror = (e) => { console.warn('TTS error', e && e.error); };
+    speechSynthesis.speak(utt);
+  };
+  if (!voicesList.length) {
+    try { voicesList = speechSynthesis.getVoices() || []; } catch {}
+    if (!voicesList.length) { setTimeout(doSpeak, 80); return; }
+  }
+  doSpeak();
 }
 
 function stopSpeech() {
@@ -2211,6 +2219,12 @@ function init() {
   if (window.speechSynthesis) {
     populateVoicesDropdown();
     speechSynthesis.addEventListener('voiceschanged', populateVoicesDropdown);
+    settings.ttsEnabled = true;
+    setInterval(() => {
+      try {
+        if (speechSynthesis.paused) speechSynthesis.resume();
+      } catch {}
+    }, 5000);
   }
 
   // If no chats, start fresh
