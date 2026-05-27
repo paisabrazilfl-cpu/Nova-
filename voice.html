@@ -321,7 +321,17 @@ body {
 }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 
-.msg-row.user { flex-direction: row-reverse; }
+/* Hardened transcript layout: every message — user OR bot — is rendered
+   left-aligned in chronological order so the AI reply always sits directly
+   under the user prompt that triggered it. No left/right chat-bubble split. */
+.msg-row { flex-direction: row !important; }
+.msg-row.user, .msg-row.bot {
+  flex-direction: row !important;
+  justify-content: flex-start !important;
+}
+.msg-row.user .msg-body, .msg-row.bot .msg-body {
+  align-items: flex-start !important;
+}
 
 .avatar {
   width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
@@ -330,20 +340,21 @@ body {
   font-size: 0.75rem; font-weight: 700; color: #fff;
   margin-top: 4px;
 }
+.avatar.user-avatar {
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+}
 
-.msg-body { max-width: calc(100% - 52px); display: flex; flex-direction: column; gap: 4px; }
-
-.msg-row.user .msg-body { align-items: flex-end; }
+.msg-body { max-width: calc(100% - 52px); display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
 
 .bubble {
-  padding: 10px 14px; border-radius: 16px;
+  padding: 10px 14px; border-radius: 12px;
   background: var(--user-bubble); color: var(--text);
   font-size: 0.9rem; line-height: 1.65;
   word-break: break-word;
 }
 .msg-row.user .bubble {
   background: var(--user-bubble);
-  border-bottom-right-radius: 4px;
+  border-top-left-radius: 4px;
 }
 .msg-row.bot .bubble {
   background: transparent; padding: 6px 0;

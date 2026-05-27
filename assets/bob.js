@@ -1629,6 +1629,7 @@ function appendMessageEl(msg, isStreaming) {
 
   if (isUser) {
     row.innerHTML = `
+      <div class="avatar user-avatar">R</div>
       <div class="msg-body">
         <div class="bubble">${escHtml(msg.content)}</div>
         <div class="msg-meta">
