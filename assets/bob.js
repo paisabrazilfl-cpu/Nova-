@@ -2124,15 +2124,12 @@ function startListening() {
   recognition.continuous = true;
   recognition.maxAlternatives = 1;
 
-  let finalTranscript = '';
   recognition.onresult = (e) => {
-    let interim = '';
-    for (let i = e.resultIndex; i < e.results.length; i++) {
-      const r = e.results[i];
-      if (r.isFinal) finalTranscript += r[0].transcript;
-      else interim += r[0].transcript;
+    let out = '';
+    for (let i = 0; i < e.results.length; i++) {
+      out += e.results[i][0].transcript;
     }
-    userInput.value = (finalTranscript + interim).trim();
+    userInput.value = out.trim();
     autoResize();
   };
   recognition.onerror = (e) => {
