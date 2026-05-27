@@ -15,15 +15,8 @@
   "agents": {
     "defaults": {
       "model": {
-        "primary": "gemini/gemini-2.5-pro",
-        "fallbacks": [
-          "gemini/gemini-2.5-flash",
-          "bitdeer/MiniMaxAI/MiniMax-M2.5",
-          "bitdeer/moonshotai/Kimi-K2.6",
-          "bitdeer/nvidia/NVIDIA-Nemotron-3-Super-120B-A12B",
-          "bitdeer/deepseek-ai/DeepSeek-V3.2",
-          "bitdeer/google/gemma-4-31B-it"
-        ]
+        "primary": "bitdeer/MiniMaxAI/MiniMax-M2.5",
+        "fallbacks": []
       },
       "params": {
         "temperature": 0.1,
