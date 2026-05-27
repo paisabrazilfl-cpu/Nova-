@@ -578,6 +578,15 @@ body {
 .toast.error { border-color: rgba(239,68,68,0.4); background: #2a1a1a; }
 @keyframes toastIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
 
+/* Speaking indicator on the latest bot message while TTS plays */
+.msg-row.bot.speaking .bubble {
+  box-shadow: 0 0 0 1px var(--accent), 0 0 18px rgba(168,85,247,0.35);
+  transition: box-shadow 0.2s ease-in-out;
+}
+.msg-row.bot.speaking .model-label::before {
+  content: '🔊 '; color: var(--accent); margin-right: 4px;
+}
+
 /* ── Responsive ─────────────────────────────────────────────────────────── */
 /* Tablet + mobile: collapsible sidebar */
 @media (max-width: 1024px) {

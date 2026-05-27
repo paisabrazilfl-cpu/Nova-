@@ -1498,12 +1498,17 @@ function speak(text) {
   if (!settings.ttsEnabled || !text.trim() || !window.speechSynthesis) return;
   try { speechSynthesis.resume(); } catch {}
   speechSynthesis.cancel();
+  const lastBotRow = chatInner.querySelector('.msg-row.bot:last-of-type');
+  const setSpeaking = (on) => {
+    if (lastBotRow) lastBotRow.classList.toggle('speaking', !!on);
+  };
   const doSpeak = () => {
     const utt = new SpeechSynthesisUtterance(text);
     utt.rate = settings.speechRate || 1.05;
     if (selectedVoice) utt.voice = selectedVoice;
-    utt.onend = () => {};
-    utt.onerror = (e) => { console.warn('TTS error', e && e.error); };
+    utt.onstart = () => setSpeaking(true);
+    utt.onend = () => setSpeaking(false);
+    utt.onerror = (e) => { setSpeaking(false); console.warn('TTS error', e && e.error); };
     speechSynthesis.speak(utt);
   };
   if (!voicesList.length) {
@@ -2109,17 +2114,20 @@ function startListening() {
 
   recognition = new SpeechRecognition();
   recognition.lang = 'en-US';
-  recognition.interimResults = false;
+  recognition.interimResults = true;
+  recognition.continuous = true;
   recognition.maxAlternatives = 1;
 
+  let finalTranscript = '';
   recognition.onresult = (e) => {
-    const text = e.results[0][0].transcript.trim();
-    stopListening();
-    if (text) {
-      userInput.value = text;
-      autoResize();
-      sendMessage();
+    let interim = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const r = e.results[i];
+      if (r.isFinal) finalTranscript += r[0].transcript;
+      else interim += r[0].transcript;
     }
+    userInput.value = (finalTranscript + interim).trim();
+    autoResize();
   };
   recognition.onerror = (e) => {
     stopListening();
@@ -2130,9 +2138,11 @@ function startListening() {
 }
 
 function stopListening() {
+  const wasListening = listening;
   listening = false;
   micBtn.classList.remove('listening');
   if (recognition) { try { recognition.stop(); } catch {} recognition = null; }
+  if (wasListening && userInput.value.trim()) sendMessage();
 }
 
 // ── Settings UI ───────────────────────────────────────────────────────────────
