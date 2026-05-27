@@ -2009,7 +2009,7 @@ function sendGateway(text, chat) {
       wsCounter++;
       ws.send(JSON.stringify({
         type: 'req', id: String(wsCounter), method: 'chat.send',
-        params: { sessionKey: 'agent:main:main', message: text }
+        params: { sessionKey: 'agent:main:main', message: text, idempotencyKey: (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : (Date.now() + '-' + Math.random().toString(36).slice(2))) }
       }));
       return;
     }
