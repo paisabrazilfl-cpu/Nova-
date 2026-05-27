@@ -18,7 +18,6 @@
         "primary": "gemini/gemini-2.5-pro",
         "fallbacks": [
           "gemini/gemini-2.5-flash",
-          "bitdeer/mistralai/Mistral-Large-3-675B-Instruct-2512",
           "bitdeer/MiniMaxAI/MiniMax-M2.5",
           "bitdeer/moonshotai/Kimi-K2.6",
           "bitdeer/nvidia/NVIDIA-Nemotron-3-Super-120B-A12B",
@@ -35,7 +34,6 @@
       "models": {
         "gemini/gemini-2.5-pro": { "alias": "Main (Gemini 2.5 Pro)" },
         "gemini/gemini-2.5-flash": { "alias": "Fallback 0 (Gemini 2.5 Flash)" },
-        "bitdeer/mistralai/Mistral-Large-3-675B-Instruct-2512": { "alias": "Fallback 1 (Mistral Large 3 — 675B)" },
         "bitdeer/MiniMaxAI/MiniMax-M2.5": { "alias": "Fallback 1 (MiniMax M2.5 — fast)" },
         "bitdeer/moonshotai/Kimi-K2.6": { "alias": "Fallback 2 (Kimi K2.6)" },
         "bitdeer/nvidia/NVIDIA-Nemotron-3-Super-120B-A12B": { "alias": "Fallback 3 (Nemotron 3 Super)" },
