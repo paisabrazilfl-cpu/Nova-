@@ -5,6 +5,7 @@
     "controlUi": {
       "allowedOrigins": [
         "https://openclawomega-ace36e.fly.dev",
+        "https://snbm.fly.dev",
         "http://localhost:3000",
         "http://127.0.0.1:3000"
       ]
