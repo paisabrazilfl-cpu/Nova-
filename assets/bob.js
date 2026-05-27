@@ -1656,7 +1656,7 @@ function appendMessageEl(msg, isStreaming) {
           ${isStreaming ? '<span class="cursor"></span>' : ''}
         </div>
         <div class="msg-meta">
-          <span class="model-label">${escHtml(settings.model)}</span>
+          <span class="model-label">NOVA</span>
           <div class="msg-actions">
             <button class="action-btn copy-btn" title="Copy">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1696,7 +1696,7 @@ function appendStreamingRow() {
         <div class="md-content" id="stream-content" style="display:none;"></div>
       </div>
       <div class="msg-meta">
-        <span class="model-label">${escHtml(settings.model)}</span>
+        <span class="model-label">NOVA</span>
       </div>
     </div>
   `;
