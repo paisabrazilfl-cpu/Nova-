@@ -1933,7 +1933,12 @@ function finalizeBotMessage(text, chat) {
 function buildMessages(chat) {
   const msgs = [];
   if (settings.systemPrompt) {
-    msgs.push({ role: 'system', content: settings.systemPrompt });
+    let sys = settings.systemPrompt;
+    const loc = window.NOVA_LOCATION;
+    if (loc && loc.lat != null && loc.lng != null) {
+      sys += `\n\n[Robert's current location: latitude ${loc.lat.toFixed(4)}, longitude ${loc.lng.toFixed(4)} (accuracy ~${Math.round(loc.accuracy || 0)}m). Local timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}. Local time now: ${new Date().toLocaleString()}. Identify the city/region from these coordinates and use it whenever location matters — restaurants, weather, traffic, events, "nearby", etc. — without asking him to repeat it.]`;
+    }
+    msgs.push({ role: 'system', content: sys });
   }
   chat.messages.forEach(m => {
     if (m.role === 'user' || m.role === 'assistant') {
@@ -2339,11 +2344,38 @@ modeTabs.forEach(tab => {
   });
 });
 
+// ── Location ──────────────────────────────────────────────────────────────────
+// Uses navigator.geolocation only — fetches to external geocoders are blocked
+// by the gateway's CSP (connect-src 'self' ws: wss: ...). Coordinates plus
+// timezone are enough for the model to identify the area.
+function primeLocation() {
+  try {
+    const cached = JSON.parse(localStorage.getItem('nova-location') || 'null');
+    if (cached && Date.now() - (cached.ts || 0) < 1000 * 60 * 60 * 12) {
+      window.NOVA_LOCATION = cached;
+    }
+  } catch {}
+  const applyAndCache = (loc) => {
+    if (!loc) return;
+    const stamped = Object.assign({}, loc, { ts: Date.now() });
+    window.NOVA_LOCATION = stamped;
+    try { localStorage.setItem('nova-location', JSON.stringify(stamped)); } catch {}
+  };
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition((pos) => {
+      applyAndCache({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy });
+    }, (err) => {
+      console.warn('geolocation denied/unavailable', err && err.message);
+    }, { enableHighAccuracy: false, timeout: 8000, maximumAge: 60 * 60 * 1000 });
+  }
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 function init() {
   loadSettings();
   loadChats();
   setupMarked();
+  primeLocation();
 
   // Populate voices (may need to wait for voiceschanged)
   if (window.speechSynthesis) {

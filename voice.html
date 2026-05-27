@@ -267,7 +267,11 @@ body {
   color: var(--muted); padding: 4px;
 }
 #hamburger svg { width: 20px; height: 20px; }
-.header-title { font-size: 0.9rem; font-weight: 600; color: var(--text); flex: 1; }
+.header-title {
+  font-size: 0.9rem; font-weight: 600; color: var(--text);
+  flex: 1; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .status-dot {
   width: 8px; height: 8px; border-radius: 50%; background: #555;
   flex-shrink: 0; transition: background 0.3s;
@@ -612,12 +616,17 @@ body {
 /* Phone: tight padding, smaller header buttons, hide download text label */
 @media (max-width: 680px) {
   #chat-col { padding: 0 12px 16px; }
-  #input-area { padding: 10px 12px 14px; }
+  #input-area { padding: 10px 8px 14px; }
+  #input-inner { gap: 4px; }
   #chat-inner { padding: 16px 0 80px; }
+  #header { padding: 10px 12px; gap: 6px; }
   #header .status-label { display: none; }
-  #copy-all-btn, #download-chat-btn { padding: 6px; }
-  .bar-btn { width: 38px; height: 38px; }
+  #copy-all-btn, #download-chat-btn { padding: 4px; width: 32px; height: 32px; }
+  #copy-all-btn svg, #download-chat-btn svg { width: 16px; height: 16px; }
+  .bar-btn { width: 36px; height: 36px; flex-shrink: 0; }
+  #attach-btn, #mic-btn, #tts-btn, #stop-btn, #send-btn { width: 36px; height: 36px; }
   #user-input { font-size: 16px; }
+  .header-title { font-size: 0.82rem; max-width: 40vw; }
 }
 /* Wide desktop: roomier chat column */
 @media (min-width: 1280px) {
