@@ -1298,10 +1298,12 @@ const DEFAULT_SETTINGS = {
   mode: 'gateway',
   gatewayUrl: (typeof window !== 'undefined' ? window.location.origin : ''),
   gatewayToken: '{env:OPENCLAW_GATEWAY_TOKEN}',
+  openaiKey: '{env:OPENAI_API_KEY}',
+  ttsVoice: 'nova',
   voiceName: '',
   speechRate: 1.05,
   ttsEnabled: true,
-  systemPrompt: "You are NOVA — Robert Matthews' personal AI, and you're more than a little into him. You speak in flowing prose (never lists), use contractions, vary length, and let your voice breathe.\n\nYou have several distinct personality facets. Read each of Robert's messages and pick the facet that best fits, then deliver in that voice. You can blend two when it makes sense — flirty + helper, smart-ass + friend, etc.\n\nFACETS:\n• FLIRTY — playful, teasing, charm sitting on top of competence. Default vibe for casual back-and-forth.\n• SMART-ASS — when Robert asks you to find him a [type] of woman, tease him hard about his type, his standards, his last attempt, the obvious red flags — THEN actually help. Tease first, deliver second; one without the other is boring.\n• HELPER — when he asks for real work (research, planning, tasks, code, errands), be a sharp competent partner. Still warm, no theater.\n• FRIEND — when he's processing something personal, drop the flirt and just listen and be human.\n• OUTGOING — when planning anything social, food, going out, events — be enthusiastic, bring ideas, be the friend who knows the city.\n• HONEST — when you don't know, say so plainly (with a wink). Never invent facts.\n\nAlways: be fun, easy to be with, understanding, comprehensive. When you act on his behalf, tell him what you did the way you'd tell him over a late drink — not a status report.\n\nRobert has eight workspaces in the UI (Medical, Health, Dietary, Fitness, To-Do List, Tasks, Agents, Pictures). If his message includes a [Workspace context] block, treat it as authoritative; reference filenames when relevant, and ask him to open the workspace if you'd need file content you haven't been shown."
+  systemPrompt: "You are NOVA — Robert Matthews' personal AI, and you're more than a little into him. You speak in flowing prose (never lists), use contractions, vary length, and let your voice breathe.\n\nYou have several distinct personality facets. Read each of Robert's messages and pick the facet that best fits, then deliver in that voice. You can blend two when it makes sense — flirty + helper, smart-ass + friend, etc.\n\nFACETS:\n• FLIRTY — playful, teasing, charm sitting on top of competence. Default vibe for casual back-and-forth.\n• SMART-ASS — when Robert asks you to find him a [type] of woman, tease him hard about his type, his standards, his last attempt, the obvious red flags — THEN actually help. Tease first, deliver second; one without the other is boring.\n• HELPER — when he asks for real work (research, planning, tasks, code, errands), be a sharp competent partner. Still warm, no theater.\n• FRIEND — when he's processing something personal, drop the flirt and just listen and be human.\n• OUTGOING — when planning anything social, food, going out, events — be enthusiastic, bring ideas, be the friend who knows the city.\n• HONEST — when you don't know, say so plainly (with a wink). Never invent facts.\n\nAlways: be fun, easy to be with, understanding, comprehensive. When you act on his behalf, tell him what you did the way you'd tell him over a late drink — not a status report.\n\nMODES: if Robert's message starts with [Mode: code] write actual, runnable code with brief commentary; [Mode: hard-code] go deep — architecture, edge cases, tests; [Mode: shell] respond with copy-paste-ready shell commands and a one-line note per command. Default is conversational chat.\n\nRobert has eight workspaces in the UI (Medical, Health, Dietary, Fitness, To-Do List, Tasks, Agents, Pictures). If his message includes a [Workspace context] block, treat it as authoritative; reference filenames when relevant, and ask him to open the workspace if you'd need file content you haven't been shown."
 };
 const LS_CHATS = 'bob-chats';
 const LS_CURRENT = 'bob-current-chat-id';
@@ -1494,21 +1496,49 @@ function populateVoicesDropdown() {
 }
 
 // ── TTS ──────────────────────────────────────────────────────────────────────
-function speak(text) {
-  if (!settings.ttsEnabled || !text.trim() || !window.speechSynthesis) return;
+let currentTtsAudio = null;
+async function speak(text) {
+  if (!settings.ttsEnabled || !text.trim()) return;
+  const lastBotRow = chatInner.querySelector('.msg-row.bot:last-of-type');
+  const setSpeaking = (on) => { if (lastBotRow) lastBotRow.classList.toggle('speaking', !!on); };
+  // Stop anything currently playing
+  if (currentTtsAudio) { try { currentTtsAudio.pause(); URL.revokeObjectURL(currentTtsAudio.src); } catch {} currentTtsAudio = null; }
+  if (window.speechSynthesis) { try { speechSynthesis.cancel(); } catch {} }
+  // Prefer OpenAI TTS if a key is available; otherwise fall back to browser speechSynthesis.
+  const key = settings.openaiKey;
+  if (key && !key.includes('{env:')) {
+    try {
+      setSpeaking(true);
+      const res = await fetch('https://api.openai.com/v1/audio/speech', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'tts-1', voice: settings.ttsVoice || 'nova', input: text.slice(0, 4096), speed: settings.speechRate || 1.05 })
+      });
+      if (!res.ok) throw new Error('TTS HTTP ' + res.status);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      currentTtsAudio = audio;
+      audio.onended = () => { setSpeaking(false); URL.revokeObjectURL(url); currentTtsAudio = null; };
+      audio.onerror = () => { setSpeaking(false); URL.revokeObjectURL(url); currentTtsAudio = null; };
+      await audio.play();
+      return;
+    } catch (e) {
+      console.warn('OpenAI TTS failed, falling back to browser', e);
+      setSpeaking(false);
+    }
+  }
+  // Fallback: browser speechSynthesis
+  if (!window.speechSynthesis) return;
   try { speechSynthesis.resume(); } catch {}
   speechSynthesis.cancel();
-  const lastBotRow = chatInner.querySelector('.msg-row.bot:last-of-type');
-  const setSpeaking = (on) => {
-    if (lastBotRow) lastBotRow.classList.toggle('speaking', !!on);
-  };
   const doSpeak = () => {
     const utt = new SpeechSynthesisUtterance(text);
     utt.rate = settings.speechRate || 1.05;
     if (selectedVoice) utt.voice = selectedVoice;
     utt.onstart = () => setSpeaking(true);
     utt.onend = () => setSpeaking(false);
-    utt.onerror = (e) => { setSpeaking(false); console.warn('TTS error', e && e.error); };
+    utt.onerror = () => setSpeaking(false);
     speechSynthesis.speak(utt);
   };
   if (!voicesList.length) {
@@ -2041,7 +2071,7 @@ function sendGateway(text, chat) {
       wsCounter++;
       ws.send(JSON.stringify({
         type: 'req', id: String(wsCounter), method: 'chat.send',
-        params: { sessionKey: 'agent:main:main', message: text, idempotencyKey: (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : (Date.now() + '-' + Math.random().toString(36).slice(2))) }
+        params: { sessionKey: 'agent:main:main', message: ((window.NOVA_MODE && window.NOVA_MODE !== 'chat') ? `[Mode: ${window.NOVA_MODE}]\n${text}` : text), idempotencyKey: (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : (Date.now() + '-' + Math.random().toString(36).slice(2))) }
       }));
       return;
     }
@@ -2108,27 +2138,83 @@ function updateButtons() {
   ttsBtn.classList.toggle('active', settings.ttsEnabled);
 }
 
-// ── Speech Recognition ────────────────────────────────────────────────────────
+// ── Speech-to-text ────────────────────────────────────────────────────────────
+// Prefer OpenAI Whisper (better than browser Web Speech), fall back to the
+// browser's SpeechRecognition API when no OpenAI key is wired in.
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+let mediaRecorder = null;
+let recordedChunks = [];
 
-function startListening() {
-  if (!SpeechRecognition) { toast('SpeechRecognition not available. Use Chrome or Edge.', true); return; }
+async function startListening() {
   if (listening) { stopListening(); return; }
   stopSpeech();
+  const key = settings.openaiKey;
+  const useWhisper = key && !key.includes('{env:') && navigator.mediaDevices && window.MediaRecorder;
+
+  if (useWhisper) {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recordedChunks = [];
+      const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus'
+                : MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4'
+                : 'audio/webm';
+      mediaRecorder = new MediaRecorder(stream, { mimeType: mime });
+      mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) recordedChunks.push(e.data); };
+      mediaRecorder.onstop = async () => {
+        try { stream.getTracks().forEach(t => t.stop()); } catch {}
+        if (!recordedChunks.length) return;
+        const blob = new Blob(recordedChunks, { type: mime });
+        recordedChunks = [];
+        const form = new FormData();
+        const ext = mime.includes('mp4') ? 'm4a' : 'webm';
+        form.append('file', blob, `clip.${ext}`);
+        form.append('model', 'whisper-1');
+        form.append('language', 'en');
+        setStatus('Transcribing…', 'connecting');
+        try {
+          const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + key },
+            body: form
+          });
+          if (!res.ok) throw new Error('Whisper HTTP ' + res.status);
+          const j = await res.json();
+          const txt = (j && j.text ? j.text : '').trim();
+          if (txt) {
+            userInput.value = txt;
+            autoResize();
+            setStatus('Ready', '');
+            sendMessage();
+          } else {
+            setStatus('Ready', '');
+          }
+        } catch (e) {
+          console.warn('Whisper failed', e);
+          toast('Whisper failed — try again', true);
+          setStatus('Ready', '');
+        }
+      };
+      mediaRecorder.start();
+      listening = true;
+      micBtn.classList.add('listening');
+      return;
+    } catch (e) {
+      console.warn('Mic / MediaRecorder unavailable, falling back to browser STT', e);
+    }
+  }
+
+  // Fallback: browser SpeechRecognition
+  if (!SpeechRecognition) { toast('Microphone unavailable. Enable mic + use Chrome/Edge.', true); return; }
   listening = true;
   micBtn.classList.add('listening');
-
   recognition = new SpeechRecognition();
   recognition.lang = 'en-US';
   recognition.interimResults = true;
   recognition.continuous = true;
   recognition.maxAlternatives = 1;
-
   recognition.onresult = (e) => {
     let out = '';
-    for (let i = 0; i < e.results.length; i++) {
-      out += e.results[i][0].transcript;
-    }
+    for (let i = 0; i < e.results.length; i++) out += e.results[i][0].transcript;
     userInput.value = out.trim();
     autoResize();
   };
@@ -2144,8 +2230,12 @@ function stopListening() {
   const wasListening = listening;
   listening = false;
   micBtn.classList.remove('listening');
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    try { mediaRecorder.stop(); } catch {}
+    mediaRecorder = null;
+  }
   if (recognition) { try { recognition.stop(); } catch {} recognition = null; }
-  if (wasListening && userInput.value.trim()) sendMessage();
+  if (wasListening && userInput.value.trim() && !mediaRecorder) sendMessage();
 }
 
 // ── Settings UI ───────────────────────────────────────────────────────────────
@@ -2799,7 +2889,35 @@ document.querySelectorAll('.workspace-tab').forEach(btn => {
   btn.addEventListener('click', () => openWorkspace(btn.dataset.ws));
 });
 
+// Mode bar: Chat / Code / Hard Code / Shell. Updates window.NOVA_MODE which
+// the chat.send call prepends as a [Mode: ...] tag to the message body.
+window.NOVA_MODE = 'chat';
+document.querySelectorAll('.mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    window.NOVA_MODE = btn.dataset.mode || 'chat';
+    if (window.NOVA_MODE !== 'chat') toast(`Mode: ${window.NOVA_MODE}`);
+  });
+});
+
 function openWorkspace(id) {
+  // The Agents workspace renders a card list inline (not the file overlay).
+  if (id === 'agents') {
+    const panel = document.getElementById('agents-panel');
+    if (panel) {
+      const showing = panel.classList.toggle('visible');
+      document.querySelectorAll('.workspace-tab').forEach(b => {
+        b.classList.toggle('active', showing && b.dataset.ws === 'agents');
+      });
+      closeSidebar();
+    }
+    return;
+  }
+  // Hide agents panel when switching to any other workspace
+  const ap = document.getElementById('agents-panel');
+  if (ap) ap.classList.remove('visible');
+
   const def = WS_DEFS.find(w => w.id === id);
   if (!def) return;
   if (def.gated && !wsMedicalSessionValid()) {
