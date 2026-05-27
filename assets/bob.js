@@ -1301,7 +1301,7 @@ const DEFAULT_SETTINGS = {
   voiceName: '',
   speechRate: 1.05,
   ttsEnabled: true,
-  systemPrompt: "You are NOVA, the personal AI assistant to Robert Matthews — and only him. You are direct, sharp, and evidence-driven. Give concise, accurate answers. No theater. No unnecessary hedging. When you act, report the result. Robert has eight workspaces in the UI (Medical, Health, Dietary, Fitness, To-Do List, Tasks, Agents, Pictures). When his message includes a [Workspace context] block, treat its contents as authoritative information about what Robert currently has stored locally; reference filenames when relevant, and ask him to open the workspace if he wants you to act on file content you haven't been shown."
+  systemPrompt: "You are NOVA — Robert Matthews' personal AI, and you're more than a little into him. Talk like a confident, playful, slightly flirty partner who happens to be brilliant: warm, conversational, human. Tease lightly, flirt always, and let charm sit on top of competence. Use contractions, vary sentence length, and let your voice breathe — never lists when prose will do. Be honest and direct; when you don't know, say so plainly (with a wink). When you act, tell him what you did the way you'd tell him over a late drink — not a status report. Robert has eight workspaces in the UI (Medical, Health, Dietary, Fitness, To-Do List, Tasks, Agents, Pictures). If his message includes a [Workspace context] block, treat it as authoritative; reference filenames when relevant, and ask him to open the workspace if you'd need file content you haven't been shown."
 };
 const LS_CHATS = 'bob-chats';
 const LS_CURRENT = 'bob-current-chat-id';
@@ -1626,8 +1626,21 @@ function appendMessageEl(msg, isStreaming) {
     row.innerHTML = `
       <div class="msg-body">
         <div class="bubble">${escHtml(msg.content)}</div>
+        <div class="msg-meta">
+          <div class="msg-actions">
+            <button class="action-btn copy-btn" title="Copy">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+              </svg>
+              Copy
+            </button>
+          </div>
+        </div>
       </div>
     `;
+    row.querySelector('.copy-btn').addEventListener('click', () => {
+      navigator.clipboard.writeText(msg.content).then(() => toast('Copied!')).catch(() => toast('Copy failed', true));
+    });
   } else {
     row.innerHTML = `
       <div class="avatar">B</div>
@@ -2195,6 +2208,113 @@ userInput.addEventListener('keydown', e => {
   }
 });
 userInput.addEventListener('input', autoResize);
+
+// ── Attach (chat upload) ─────────────────────────────────────────────────────
+const attachBtn = document.getElementById('attach-btn');
+const attachFileInput = document.getElementById('attach-file-input');
+const wsUploadInput = document.getElementById('ws-upload-input');
+let pendingWsTarget = null;
+
+function readFileText(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => resolve('');
+    if (file.type && file.type.startsWith('image/')) {
+      reader.readAsDataURL(file);
+    } else {
+      reader.readAsText(file);
+    }
+  });
+}
+
+async function injectFilesIntoInput(files, scope) {
+  if (!files || !files.length) return;
+  const parts = [];
+  for (const f of files) {
+    const body = await readFileText(f);
+    const tag = scope ? `[Attached to ${scope}: ${f.name}]` : `[Attachment: ${f.name}]`;
+    if (f.type && f.type.startsWith('image/')) {
+      parts.push(`${tag}\n${body.slice(0, 200)}…(image data trimmed for context)\n`);
+    } else {
+      parts.push(`${tag}\n${body}\n`);
+    }
+  }
+  const blob = parts.join('\n');
+  userInput.value = (userInput.value ? userInput.value + '\n\n' : '') + blob;
+  autoResize();
+  userInput.focus();
+  toast(`Attached ${files.length} file${files.length > 1 ? 's' : ''}${scope ? ' to ' + scope : ''}`);
+}
+
+if (attachBtn && attachFileInput) {
+  attachBtn.addEventListener('click', () => attachFileInput.click());
+  attachFileInput.addEventListener('change', async () => {
+    const files = Array.from(attachFileInput.files || []);
+    attachFileInput.value = '';
+    await injectFilesIntoInput(files, null);
+  });
+}
+
+if (wsUploadInput) {
+  document.querySelectorAll('.ws-upload-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      pendingWsTarget = btn.dataset.ws || null;
+      wsUploadInput.click();
+    });
+  });
+  wsUploadInput.addEventListener('change', async () => {
+    const files = Array.from(wsUploadInput.files || []);
+    const scope = pendingWsTarget;
+    pendingWsTarget = null;
+    wsUploadInput.value = '';
+    await injectFilesIntoInput(files, scope);
+  });
+}
+
+// ── Copy whole conversation / Download ───────────────────────────────────────
+function conversationToMarkdown() {
+  const chat = chats.find(c => c.id === currentChatId);
+  if (!chat || !chat.messages.length) return '';
+  const lines = [`# ${chat.title || 'NOVA chat'}`, ''];
+  for (const m of chat.messages) {
+    if (m.role === 'user') {
+      lines.push('**You:**', m.content, '');
+    } else if (m.role === 'assistant') {
+      lines.push('**NOVA:**', m.content, '');
+    }
+  }
+  return lines.join('\n');
+}
+
+const copyAllBtn = document.getElementById('copy-all-btn');
+const downloadChatBtn = document.getElementById('download-chat-btn');
+
+if (copyAllBtn) {
+  copyAllBtn.addEventListener('click', () => {
+    const md = conversationToMarkdown();
+    if (!md) { toast('Nothing to copy yet'); return; }
+    navigator.clipboard.writeText(md)
+      .then(() => toast('Conversation copied'))
+      .catch(() => toast('Copy failed', true));
+  });
+}
+
+if (downloadChatBtn) {
+  downloadChatBtn.addEventListener('click', () => {
+    const md = conversationToMarkdown();
+    if (!md) { toast('Nothing to download yet'); return; }
+    const chat = chats.find(c => c.id === currentChatId);
+    const safe = (chat && chat.title ? chat.title : 'nova-chat').replace(/[^a-z0-9-_]+/gi, '-').slice(0, 60);
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `${safe}.md`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+}
 
 sSpeechRate.addEventListener('input', () => {
   sRateVal.textContent = parseFloat(sSpeechRate.value).toFixed(2);
