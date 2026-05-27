@@ -578,12 +578,14 @@ body {
 .toast.error { border-color: rgba(239,68,68,0.4); background: #2a1a1a; }
 @keyframes toastIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
 
-/* ── Mobile ─────────────────────────────────────────────────────────────── */
-@media (max-width: 680px) {
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+/* Tablet + mobile: collapsible sidebar */
+@media (max-width: 1024px) {
   #sidebar {
     position: fixed; top: 0; left: 0;
     height: 100vh; height: 100dvh;
     transform: translateX(-100%);
+    z-index: 100;
   }
   #sidebar.open { transform: translateX(0); box-shadow: 4px 0 24px rgba(0,0,0,0.5); }
   #hamburger { display: flex; }
@@ -591,8 +593,33 @@ body {
     display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 99;
   }
   #sidebar-overlay.visible { display: block; }
+}
+/* Tablet sweet spot: a bit more breathing room than phone */
+@media (min-width: 681px) and (max-width: 1024px) {
+  #chat-col { padding: 0 24px 24px; }
+  #chat-inner { max-width: 720px; padding: 24px 0 96px; }
+  #input-area { padding: 14px 24px 18px; }
+}
+/* Phone: tight padding, smaller header buttons, hide download text label */
+@media (max-width: 680px) {
   #chat-col { padding: 0 12px 16px; }
   #input-area { padding: 10px 12px 14px; }
+  #chat-inner { padding: 16px 0 80px; }
+  #header .status-label { display: none; }
+  #copy-all-btn, #download-chat-btn { padding: 6px; }
+  .bar-btn { width: 38px; height: 38px; }
+  #user-input { font-size: 16px; }
+}
+/* Wide desktop: roomier chat column */
+@media (min-width: 1280px) {
+  #chat-inner { max-width: 880px; }
+  :root { --sidebar-w: 280px; }
+}
+/* Landscape phones: shrink vertical chrome */
+@media (max-height: 480px) and (orientation: landscape) {
+  #chat-inner { padding: 8px 0 64px; }
+  #input-area { padding: 6px 12px 8px; }
+  #header { padding: 4px 12px; }
 }
 </style>
 </head>
