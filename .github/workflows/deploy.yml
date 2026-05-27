@@ -31,7 +31,7 @@ jobs:
           set -x
           flyctl version
           flyctl auth whoami
-          flyctl status -a openclawomega-ace36e
+          flyctl status -a snbm
 
       - name: Deploy
         env:
@@ -39,7 +39,7 @@ jobs:
         run: |
           set -x
           flyctl deploy \
-            --app openclawomega-ace36e \
+            --app snbm \
             --remote-only \
             --ha=false \
             --wait-timeout=900

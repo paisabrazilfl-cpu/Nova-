@@ -1,4 +1,4 @@
-app = "openclawomega-ace36e"
+app = "snbm"
 primary_region = "iad"
 
 [build]
