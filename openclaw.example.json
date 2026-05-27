@@ -15,8 +15,11 @@
   "agents": {
     "defaults": {
       "model": {
-        "primary": "bitdeer/MiniMaxAI/MiniMax-M2.5",
-        "fallbacks": []
+        "primary": "openai/gpt-4o-mini",
+        "fallbacks": [
+          "openai/gpt-4o",
+          "bitdeer/MiniMaxAI/MiniMax-M2.5"
+        ]
       },
       "params": {
         "temperature": 0.1,
@@ -60,6 +63,29 @@
   "models": {
     "mode": "merge",
     "providers": {
+      "openai": {
+        "baseUrl": "https://api.openai.com/v1",
+        "apiKey": "${OPENAI_API_KEY}",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "gpt-4o-mini",
+            "name": "GPT-4o mini",
+            "input": ["text"],
+            "cost": { "input": 0.15, "output": 0.60, "cacheRead": 0.075, "cacheWrite": 0 },
+            "contextWindow": 128000,
+            "maxTokens": 16384
+          },
+          {
+            "id": "gpt-4o",
+            "name": "GPT-4o",
+            "input": ["text"],
+            "cost": { "input": 2.50, "output": 10.00, "cacheRead": 1.25, "cacheWrite": 0 },
+            "contextWindow": 128000,
+            "maxTokens": 16384
+          }
+        ]
+      },
       "gemini": {
         "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
         "apiKey": "${GEMINI_API_KEY}",
