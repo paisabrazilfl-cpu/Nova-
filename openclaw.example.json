@@ -15,10 +15,9 @@
   "agents": {
     "defaults": {
       "model": {
-        "primary": "openai/gpt-4o-mini",
+        "primary": "bitdeer/Qwen/Qwen3-235B-A22B",
         "fallbacks": [
-          "openai/gpt-4o",
-          "bitdeer/MiniMaxAI/MiniMax-M2.5"
+          "bitdeer/openai/gpt-oss-20b"
         ]
       },
       "params": {
