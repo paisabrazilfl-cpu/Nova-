@@ -1,0 +1,5 @@
+{
+  "autonomyEnabled": true,
+  "dailyAutonomousRunCap": 60,
+  "_notes": "Autonomy governance, enforced by the poller daemon (scripts/poll-events.mjs). autonomyEnabled=false is a hard kill switch: the poller disables the heartbeat cron job so the agent stops running unprompted. dailyAutonomousRunCap limits autonomous heartbeat runs per UTC day; when exceeded the poller auto-disables the heartbeat job and queues a P1 alert. The counter resets at UTC midnight and the poller re-enables the job it disabled. This file is seeded once and is operator-editable; edits take effect on the next poll tick (<=10 min)."
+}

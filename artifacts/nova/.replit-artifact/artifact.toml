@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Nova — AI Assistant"
+version = "1.0.0"
+id = "artifacts/nova"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18131
+
+[services.development]
+run = "pnpm --filter @workspace/nova run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/nova", "run", "build" ]
+publicDir = "artifacts/nova/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18131"
+BASE_PATH = "/"

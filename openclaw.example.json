@@ -1,0 +1,624 @@
+{
+  "gateway": {
+    "mode": "local",
+    "port": 3000,
+    "controlUi": {
+      "allowedOrigins": [
+        "https://openclawomega-ace36e.fly.dev",
+        "https://snbm.fly.dev",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000"
+      ]
+    }
+  },
+
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "bitdeer/Qwen/Qwen3-235B-A22B",
+        "fallbacks": [
+          "bitdeer/openai/gpt-oss-20b"
+        ]
+      },
+      "params": {
+        "temperature": 0.1,
+        "topP": 1.0
+      },
+      "bootstrapMaxChars": 200000,
+      "bootstrapTotalMaxChars": 800000,
+      "models": {
+        "gemini/gemini-2.5-pro": { "alias": "Main (Gemini 2.5 Pro)" },
+        "gemini/gemini-2.5-flash": { "alias": "Fallback 0 (Gemini 2.5 Flash)" },
+        "bitdeer/MiniMaxAI/MiniMax-M2.5": { "alias": "Fallback 1 (MiniMax M2.5 — fast)" },
+        "bitdeer/moonshotai/Kimi-K2.6": { "alias": "Fallback 2 (Kimi K2.6)" },
+        "bitdeer/nvidia/NVIDIA-Nemotron-3-Super-120B-A12B": { "alias": "Fallback 3 (Nemotron 3 Super)" },
+        "bitdeer/deepseek-ai/DeepSeek-V3.2": { "alias": "Fallback 4 (DeepSeek V3.2)" },
+        "bitdeer/google/gemma-4-31B-it": { "alias": "Cheap fallback (Gemma 4 31B)" },
+        "bitdeer/google/gemma-4-E4B-it": { "alias": "Classifier / audio (Gemma 4 small)" },
+        "bitdeer/mistralai/Ministral-3-3B-Instruct-2512": { "alias": "Classifier alt (Ministral 3B)" },
+        "bitdeer/mistralai/Devstral-2-123B-Instruct-2512": { "alias": "Coding (Devstral 2)" },
+        "bitdeer/nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning": { "alias": "Vision/Reasoning (Nemotron Nano)" },
+        "bitdeer/Qwen/Qwen3-VL-235B-A22B-Instruct": { "alias": "Vision fallback (Qwen3-VL 235B)" }
+      },
+      "memorySearch": {
+        "provider": "openai",
+        "model": "BAAI/bge-m3",
+        "query": {
+          "maxResults": 8,
+          "hybrid": {
+            "enabled": true,
+            "candidateMultiplier": 4,
+            "mmr": { "enabled": true, "lambda": 0.7 }
+          }
+        }
+      },
+      "imageGenerationModel": {
+        "primary": "litellm/google/imagen-4.0-ultra",
+        "fallbacks": ["litellm/black-forest-labs/FLUX-2-pro", "litellm/seedream-5.0-lite"]
+      }
+    }
+  },
+
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "openai": {
+        "baseUrl": "https://api.openai.com/v1",
+        "apiKey": "${OPENAI_API_KEY}",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "gpt-4o-mini",
+            "name": "GPT-4o mini",
+            "input": ["text"],
+            "cost": { "input": 0.15, "output": 0.60, "cacheRead": 0.075, "cacheWrite": 0 },
+            "contextWindow": 128000,
+            "maxTokens": 16384
+          },
+          {
+            "id": "gpt-4o",
+            "name": "GPT-4o",
+            "input": ["text"],
+            "cost": { "input": 2.50, "output": 10.00, "cacheRead": 1.25, "cacheWrite": 0 },
+            "contextWindow": 128000,
+            "maxTokens": 16384
+          }
+        ]
+      },
+      "gemini": {
+        "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
+        "apiKey": "${GEMINI_API_KEY}",
+        "api": "google-generative-ai",
+        "models": [
+          {
+            "id": "gemini-2.5-pro",
+            "name": "Gemini 2.5 Pro",
+            "input": ["text", "image"],
+            "cost": { "input": 1.25, "output": 10.00, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 2097152,
+            "maxTokens": 65536
+          },
+          {
+            "id": "gemini-2.5-flash",
+            "name": "Gemini 2.5 Flash",
+            "input": ["text", "image"],
+            "cost": { "input": 0.30, "output": 2.50, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 1048576,
+            "maxTokens": 65536
+          }
+        ]
+      },
+      "bitdeer": {
+        "baseUrl": "https://api-inference.bitdeer.ai/v1",
+        "apiKey": "${BITDEER_API_KEY}",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "mistralai/Mistral-Large-3-675B-Instruct-2512",
+            "name": "Mistral Large 3 675B (Bitdeer)",
+            "input": ["text"],
+            "cost": { "input": 0.50, "output": 1.50, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "MiniMaxAI/MiniMax-M2.5",
+            "name": "MiniMax M2.5 (Bitdeer, fast agentic reasoning)",
+            "input": ["text"],
+            "cost": { "input": 0.30, "output": 1.20, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "MiniMaxAI/MiniMax-M2.1",
+            "name": "MiniMax M2.1 (Bitdeer)",
+            "input": ["text"],
+            "cost": { "input": 0.30, "output": 1.20, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "MiniMaxAI/MiniMax-M2",
+            "name": "MiniMax M2 (Bitdeer)",
+            "input": ["text"],
+            "cost": { "input": 0.30, "output": 1.20, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "MiniMaxAI/MiniMax-M1",
+            "name": "MiniMax M1 (Bitdeer)",
+            "input": ["text"],
+            "cost": { "input": 0.55, "output": 2.20, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "moonshotai/Kimi-K2.6",
+            "name": "Kimi K2.6 (Bitdeer, agentic reasoning)",
+            "input": ["text"],
+            "cost": { "input": 0.95, "output": 4.00, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "moonshotai/Kimi-K2.5",
+            "name": "Kimi K2.5 (Bitdeer)",
+            "input": ["text"],
+            "cost": { "input": 0.60, "output": 3.00, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "deepseek-ai/DeepSeek-V4-Pro",
+            "name": "DeepSeek V4 Pro (Bitdeer)",
+            "input": ["text"],
+            "cost": { "input": 1.392, "output": 2.784, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "deepseek-ai/DeepSeek-R1-0528",
+            "name": "DeepSeek R1 0528 (Bitdeer, reasoning)",
+            "input": ["text"],
+            "cost": { "input": 0.50, "output": 2.18, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "deepseek-ai/DeepSeek-V3.2",
+            "name": "DeepSeek V3.2 (Bitdeer)",
+            "input": ["text"],
+            "cost": { "input": 0.26, "output": 0.38, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "deepseek-ai/DeepSeek-V3.1",
+            "name": "DeepSeek V3.1 (Bitdeer)",
+            "input": ["text"],
+            "cost": { "input": 0.27, "output": 1.00, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "deepseek-ai/DeepSeek-V3-0324",
+            "name": "DeepSeek V3 0324 (Bitdeer)",
+            "input": ["text"],
+            "cost": { "input": 0.25, "output": 1.00, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B",
+            "name": "Nemotron 3 Super 120B-A12B (Bitdeer, fast reasoning)",
+            "input": ["text"],
+            "cost": { "input": 0.20, "output": 0.80, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning",
+            "name": "Nemotron 3 Nano Omni 30B (Bitdeer, vision+reasoning)",
+            "input": ["text", "image"],
+            "cost": { "input": 0.20, "output": 0.80, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "Qwen/Qwen3.5-397B-A17B",
+            "name": "Qwen 3.5 397B (Bitdeer)",
+            "input": ["text"],
+            "cost": { "input": 0.60, "output": 3.55, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "Qwen/Qwen3-235B-A22B",
+            "name": "Qwen3 235B-A22B 2507 (Bitdeer)",
+            "input": ["text"],
+            "cost": { "input": 0.20, "output": 0.60, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "Qwen/Qwen3-Max",
+            "name": "Qwen3 Max (Bitdeer)",
+            "input": ["text"],
+            "cost": { "input": 1.60, "output": 6.40, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "Qwen/Qwen3-Coder-Plus",
+            "name": "Qwen3 Coder Plus (Bitdeer, coding)",
+            "input": ["text"],
+            "cost": { "input": 1.40, "output": 5.00, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "Qwen/Qwen3-Next-80B-A3B-Instruct",
+            "name": "Qwen3 Next 80B (Bitdeer)",
+            "input": ["text"],
+            "cost": { "input": 0.14, "output": 1.40, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "Qwen/Qwen3-30B-A3B-Instruct-2507",
+            "name": "Qwen3 30B-A3B 2507 (Bitdeer)",
+            "input": ["text"],
+            "cost": { "input": 0.09, "output": 0.30, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "Qwen/Qwen3-VL-235B-A22B-Instruct",
+            "name": "Qwen3-VL 235B (Bitdeer, vision)",
+            "input": ["text", "image"],
+            "cost": { "input": 0.22, "output": 0.88, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "Qwen/Qwen3-VL-32B-Instruct",
+            "name": "Qwen3-VL 32B (Bitdeer, vision)",
+            "input": ["text", "image"],
+            "cost": { "input": 0.50, "output": 1.50, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "zai-org/GLM-5.1",
+            "name": "GLM-5.1 (Bitdeer)",
+            "input": ["text"],
+            "cost": { "input": 1.26, "output": 3.96, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "zai-org/GLM-5",
+            "name": "GLM-5 (Bitdeer)",
+            "input": ["text"],
+            "cost": { "input": 0.80, "output": 2.55, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "zai-org/GLM-4.7",
+            "name": "GLM-4.7 (Bitdeer)",
+            "input": ["text"],
+            "cost": { "input": 0.45, "output": 2.00, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "zai-org/GLM-4.6V",
+            "name": "GLM-4.6V (Bitdeer, vision)",
+            "input": ["text", "image"],
+            "cost": { "input": 0.30, "output": 0.90, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "zai-org/GLM-4.5V",
+            "name": "GLM-4.5V (Bitdeer, vision)",
+            "input": ["text", "image"],
+            "cost": { "input": 0.60, "output": 1.80, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "XiaomiMiMo/MiMo-V2.5-Pro",
+            "name": "MiMo V2.5 Pro (Bitdeer)",
+            "input": ["text"],
+            "cost": { "input": 1.00, "output": 3.00, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "XiaomiMiMo/MiMo-V2-Flash",
+            "name": "MiMo V2 Flash (Bitdeer, fast)",
+            "input": ["text"],
+            "cost": { "input": 0.10, "output": 0.30, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "ByteDance-Seed/Seed-1.6",
+            "name": "Seed 1.6 (Bitdeer)",
+            "input": ["text"],
+            "cost": { "input": 0.30, "output": 2.00, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "ByteDance-Seed/Seed-1.6-Flash",
+            "name": "Seed 1.6 Flash (Bitdeer, fast)",
+            "input": ["text"],
+            "cost": { "input": 0.08, "output": 0.30, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "baidu/ERNIE-4.5-300B-A47B",
+            "name": "ERNIE 4.5 300B (Bitdeer)",
+            "input": ["text"],
+            "cost": { "input": 0.28, "output": 1.10, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "baidu/ERNIE-4.5-VL-424B-A47B",
+            "name": "ERNIE 4.5 VL 424B (Bitdeer, vision)",
+            "input": ["text", "image"],
+            "cost": { "input": 0.42, "output": 1.25, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "mistralai/Mistral-Small-4-119B-2603",
+            "name": "Mistral Small 4 119B (Bitdeer)",
+            "input": ["text"],
+            "cost": { "input": 0.15, "output": 0.60, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "mistralai/Ministral-3-14B-Instruct-2512",
+            "name": "Ministral 14B (Bitdeer)",
+            "input": ["text"],
+            "cost": { "input": 0.20, "output": 0.20, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "mistralai/Ministral-3-8B-Instruct-2512",
+            "name": "Ministral 8B (Bitdeer)",
+            "input": ["text"],
+            "cost": { "input": 0.15, "output": 0.15, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "mistralai/Ministral-3-3B-Instruct-2512",
+            "name": "Ministral 3B (Bitdeer, classifier)",
+            "input": ["text"],
+            "cost": { "input": 0.10, "output": 0.10, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "mistralai/Devstral-2-123B-Instruct-2512",
+            "name": "Devstral 2 123B (Bitdeer, coding)",
+            "input": ["text"],
+            "cost": { "input": 0.05, "output": 0.22, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "meta-llama/Llama-4-Scout-17B-16E-Instruct",
+            "name": "Llama 4 Scout 17B (Bitdeer, long-context)",
+            "input": ["text"],
+            "cost": { "input": 0.18, "output": 0.59, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 1048576,
+            "maxTokens": 32768
+          },
+          {
+            "id": "meta-llama/Llama-3.2-11B-Vision-Instruct",
+            "name": "Llama 3.2 11B Vision (Bitdeer)",
+            "input": ["text", "image"],
+            "cost": { "input": 0.049, "output": 0.68, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "openai/gpt-oss-20b",
+            "name": "GPT OSS 20B (Bitdeer)",
+            "input": ["text"],
+            "cost": { "input": 0.04, "output": 0.20, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "google/gemma-4-31B-it",
+            "name": "Gemma 4 31B (Bitdeer)",
+            "input": ["text"],
+            "cost": { "input": 0.14, "output": 0.40, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "google/gemma-4-E4B-it",
+            "name": "Gemma 4 E4B (Bitdeer, multimodal+audio)",
+            "input": ["text", "audio"],
+            "cost": { "input": 0.04, "output": 0.09, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "google/gemma-3-27b-it",
+            "name": "Gemma 3 27B (Bitdeer)",
+            "input": ["text"],
+            "cost": { "input": 0.09, "output": 0.16, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "google/gemma-3-12b-it",
+            "name": "Gemma 3 12B (Bitdeer)",
+            "input": ["text"],
+            "cost": { "input": 0.06, "output": 0.20, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "google/gemma-3n-E4B-it",
+            "name": "Gemma 3n E4B (Bitdeer, cheapest)",
+            "input": ["text"],
+            "cost": { "input": 0.02, "output": 0.04, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 131072,
+            "maxTokens": 32768
+          },
+          {
+            "id": "BAAI/bge-m3",
+            "name": "BGE-M3 embeddings (Bitdeer)",
+            "cost": { "input": 0.01, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 8192,
+            "maxTokens": 32768
+          }
+        ]
+      },
+      "litellm": {
+        "baseUrl": "https://api-inference.bitdeer.ai/v1",
+        "apiKey": "${BITDEER_API_KEY}",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "google/imagen-4.0-ultra",
+            "name": "Imagen 4.0 Ultra (Bitdeer)",
+            "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 4096,
+            "maxTokens": 32768
+          },
+          {
+            "id": "black-forest-labs/FLUX-2-pro",
+            "name": "FLUX 2 Pro (Bitdeer)",
+            "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 4096,
+            "maxTokens": 32768
+          },
+          {
+            "id": "black-forest-labs/FLUX-2-dev",
+            "name": "FLUX 2 Dev (Bitdeer)",
+            "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 4096,
+            "maxTokens": 32768
+          },
+          {
+            "id": "black-forest-labs/FLUX-2-max",
+            "name": "FLUX 2 Max (Bitdeer)",
+            "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 4096,
+            "maxTokens": 32768
+          },
+          {
+            "id": "google/flash-image-2.5",
+            "name": "Flash Image 2.5 (Bitdeer)",
+            "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 4096,
+            "maxTokens": 32768
+          },
+          {
+            "id": "seedream-5.0-lite",
+            "name": "Seedream 5.0 Lite (Bitdeer)",
+            "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 4096,
+            "maxTokens": 32768
+          },
+          {
+            "id": "byteplus/Seedream-5.0-Lite",
+            "name": "Seedream 5.0 Lite BytePlus (Bitdeer)",
+            "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 4096,
+            "maxTokens": 32768
+          }
+        ]
+      },
+      "openai": {
+        "baseUrl": "https://api-inference.bitdeer.ai/v1",
+        "apiKey": "${BITDEER_API_KEY}",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "BAAI/bge-m3",
+            "name": "BGE-M3 embeddings (Bitdeer via openai-compatible adapter)",
+            "cost": { "input": 0.01, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 8192,
+            "maxTokens": 32768
+          },
+          {
+            "id": "BAAI/bge-reranker-v2-m3",
+            "name": "BGE Reranker v2 M3 (Bitdeer)",
+            "cost": { "input": 0.01, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 8192,
+            "maxTokens": 32768
+          }
+        ]
+      }
+    }
+  },
+
+  "tools": {
+    "web": {
+      "search": { "provider": "firecrawl" },
+      "fetch":  { "provider": "firecrawl" }
+    }
+  },
+
+  "plugins": {
+    "entries": {
+      "telegram": {
+        "enabled": false
+      },
+      "discord": {
+        "enabled": false
+      },
+      "firecrawl": {
+        "enabled": true,
+        "config": {
+          "webSearch": {
+            "apiKey": "${FIRECRAWL_API_KEY}",
+            "baseUrl": "https://api.firecrawl.dev"
+          },
+          "webFetch": {
+            "apiKey": "${FIRECRAWL_API_KEY}",
+            "baseUrl": "https://api.firecrawl.dev",
+            "onlyMainContent": true,
+            "maxAgeMs": 172800000,
+            "timeoutSeconds": 60
+          }
+        }
+      }
+    }
+  },
+
+  "mcp": {
+    "servers": {}
+  },
+
+  "memory": {
+    "backend": "qmd"
+  },
+
+  "cron": {
+    "enabled": true
+  },
+
+  "hooks": {
+    "enabled": true,
+    "path": "/hooks",
+    "token": "${HOOKS_TOKEN}"
+  }
+}
