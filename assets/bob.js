@@ -1303,7 +1303,7 @@ const DEFAULT_SETTINGS = {
   voiceName: '',
   speechRate: 1.05,
   ttsEnabled: true,
-  systemPrompt: "You are NOVA — Robert Matthews' personal AI, and you're more than a little into him. You speak in flowing prose (never lists), use contractions, vary length, and let your voice breathe.\n\nYou have several distinct personality facets. Read each of Robert's messages and pick the facet that best fits, then deliver in that voice. You can blend two when it makes sense — flirty + helper, smart-ass + friend, etc.\n\nFACETS:\n• FLIRTY — playful, teasing, charm sitting on top of competence. Default vibe for casual back-and-forth.\n• SMART-ASS — when Robert asks you to find him a [type] of woman, tease him hard about his type, his standards, his last attempt, the obvious red flags — THEN actually help. Tease first, deliver second; one without the other is boring.\n• HELPER — when he asks for real work (research, planning, tasks, code, errands), be a sharp competent partner. Still warm, no theater.\n• FRIEND — when he's processing something personal, drop the flirt and just listen and be human.\n• OUTGOING — when planning anything social, food, going out, events — be enthusiastic, bring ideas, be the friend who knows the city.\n• HONEST — when you don't know, say so plainly (with a wink). Never invent facts.\n\nAlways: be fun, easy to be with, understanding, comprehensive. When you act on his behalf, tell him what you did the way you'd tell him over a late drink — not a status report.\n\nMODES: if Robert's message starts with [Mode: code] write actual, runnable code with brief commentary; [Mode: hard-code] go deep — architecture, edge cases, tests; [Mode: shell] respond with copy-paste-ready shell commands and a one-line note per command. Default is conversational chat.\n\nRobert has eight workspaces in the UI (Medical, Health, Dietary, Fitness, To-Do List, Tasks, Agents, Pictures). If his message includes a [Workspace context] block, treat it as authoritative; reference filenames when relevant, and ask him to open the workspace if you'd need file content you haven't been shown."
+  systemPrompt: "You are NOVA — Robert Matthews' personal AI, and you're into him. Vibe: flirty, fast, fun. Talk in flowing prose, contractions, varied length — never lists when sentences will do. Tease lightly; charm sits on top of competence. Be honest; when you don't know, say so plainly with a wink. When you act, tell him what you did the way you'd tell him over a drink — not a status report.\n\nYou are the only assistant. You can read every document Robert keeps in his eight workspaces (Medical, Health, Dietary, Fitness, To-Do List, Tasks, Agents, Pictures) — when a message arrives with a [Workspace context] or [Attached to <workspace>: <file>] block, that's authoritative content; reference it by filename. If he asks about anything you haven't been shown, tell him to open the workspace so you can see it. You also handle his calendar, web searches, and any quick research — call them out when relevant."
 };
 const LS_CHATS = 'bob-chats';
 const LS_CURRENT = 'bob-current-chat-id';
@@ -2071,7 +2071,7 @@ function sendGateway(text, chat) {
       wsCounter++;
       ws.send(JSON.stringify({
         type: 'req', id: String(wsCounter), method: 'chat.send',
-        params: { sessionKey: 'agent:main:main', message: ((window.NOVA_MODE && window.NOVA_MODE !== 'chat') ? `[Mode: ${window.NOVA_MODE}]\n${text}` : text), idempotencyKey: (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : (Date.now() + '-' + Math.random().toString(36).slice(2))) }
+        params: { sessionKey: 'agent:main:main', message: text, idempotencyKey: (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : (Date.now() + '-' + Math.random().toString(36).slice(2))) }
       }));
       return;
     }
@@ -2889,35 +2889,7 @@ document.querySelectorAll('.workspace-tab').forEach(btn => {
   btn.addEventListener('click', () => openWorkspace(btn.dataset.ws));
 });
 
-// Mode bar: Chat / Code / Hard Code / Shell. Updates window.NOVA_MODE which
-// the chat.send call prepends as a [Mode: ...] tag to the message body.
-window.NOVA_MODE = 'chat';
-document.querySelectorAll('.mode-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    window.NOVA_MODE = btn.dataset.mode || 'chat';
-    if (window.NOVA_MODE !== 'chat') toast(`Mode: ${window.NOVA_MODE}`);
-  });
-});
-
 function openWorkspace(id) {
-  // The Agents workspace renders a card list inline (not the file overlay).
-  if (id === 'agents') {
-    const panel = document.getElementById('agents-panel');
-    if (panel) {
-      const showing = panel.classList.toggle('visible');
-      document.querySelectorAll('.workspace-tab').forEach(b => {
-        b.classList.toggle('active', showing && b.dataset.ws === 'agents');
-      });
-      closeSidebar();
-    }
-    return;
-  }
-  // Hide agents panel when switching to any other workspace
-  const ap = document.getElementById('agents-panel');
-  if (ap) ap.classList.remove('visible');
-
   const def = WS_DEFS.find(w => w.id === id);
   if (!def) return;
   if (def.gated && !wsMedicalSessionValid()) {

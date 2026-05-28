@@ -158,39 +158,6 @@ body {
 .ws-upload-btn:hover { background: var(--surface2); color: var(--accent); }
 .ws-upload-btn svg { width: 14px; height: 14px; }
 
-#mode-bar {
-  display: flex; gap: 6px; max-width: 760px; margin: 0 auto 8px;
-  padding: 0 4px; flex-wrap: wrap;
-}
-.mode-btn {
-  background: var(--surface2); border: 1px solid var(--border);
-  color: var(--muted); padding: 5px 10px; border-radius: 999px;
-  font-size: 0.78rem; cursor: pointer;
-  transition: background 0.12s, color 0.12s, border-color 0.12s;
-}
-.mode-btn:hover { color: var(--text); }
-.mode-btn.active {
-  background: var(--accent-dim); color: #c084fc;
-  border-color: rgba(168,85,247,0.5);
-}
-
-.agents-panel {
-  max-width: 760px; margin: 24px auto; padding: 0 16px;
-  display: none;
-}
-.agents-panel.visible { display: block; }
-.agent-card {
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: 12px; padding: 14px 16px; margin-bottom: 12px;
-  color: var(--text); font-size: 0.86rem; line-height: 1.5;
-}
-.agent-card h4 { margin: 0 0 4px; font-size: 0.95rem; color: var(--accent); }
-.agent-card .agent-meta { color: var(--muted); font-size: 0.75rem; margin-bottom: 6px; }
-.agent-card pre {
-  background: var(--surface2); padding: 8px 10px; border-radius: 6px;
-  font-size: 0.78rem; overflow-x: auto; margin: 6px 0 0;
-}
-
 .ws-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,0.72);
   display: flex; align-items: center; justify-content: center; z-index: 200;
@@ -821,28 +788,9 @@ body {
     <div id="chat-inner">
       <!-- Messages rendered here -->
     </div>
-    <div id="agents-panel" class="agents-panel">
-      <div class="agent-card">
-        <h4>OpenShell</h4>
-        <div class="agent-meta">Local shell agent · Rust + Python · pair via gateway</div>
-        <div>A terminal-side agent NOVA can hand work to — file edits, repo work, long-running shell tasks. Lives on your machine, talks to the gateway.</div>
-        <pre>openclaw nodes pair openshell --url wss://snbm.fly.dev</pre>
-      </div>
-      <div class="agent-card">
-        <h4>NemoClaw</h4>
-        <div class="agent-meta">Status: not uploaded yet</div>
-        <div>Drop the NemoClaw archive on the chat once you have it; this card will populate with its pairing command.</div>
-      </div>
-    </div>
   </div>
 
   <div id="input-area">
-    <div id="mode-bar">
-      <button class="mode-btn active" data-mode="chat" type="button">Chat</button>
-      <button class="mode-btn" data-mode="code" type="button">Code</button>
-      <button class="mode-btn" data-mode="hard-code" type="button">Hard Code</button>
-      <button class="mode-btn" data-mode="shell" type="button">Shell</button>
-    </div>
     <div id="input-inner">
       <input type="file" id="attach-file-input" multiple style="display:none">
       <button class="bar-btn" id="attach-btn" title="Attach file">
