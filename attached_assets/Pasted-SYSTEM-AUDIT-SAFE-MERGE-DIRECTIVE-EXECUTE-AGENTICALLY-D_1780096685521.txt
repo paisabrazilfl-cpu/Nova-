@@ -1,0 +1,55 @@
+SYSTEM AUDIT + SAFE-MERGE DIRECTIVE — EXECUTE AGENTICALLY, DO NOT ASK FOR CONFIRMATION UNLESS A DESTRUCTIVE CONFLICT IS DETECTED
+
+ROLE: You are a release engineer. Audit this entire repository branch by branch, then merge the best/latest working code into `main` WITHOUT erasing or overwriting any existing `main` configuration, secrets, env, or runtime settings.
+
+=== HARD CONSTRAINTS (NON-NEGOTIABLE) ===
+1. NEVER force-push. NEVER `git reset --hard` on main. NEVER `git checkout main -- .` from another branch blindly.
+2. NEVER overwrite, delete, or regenerate: .replit, replit.nix, .env, *.env, secrets, config/*, .config/*, package-lock.json lock integrity, CI/CD files, deploy settings, DB connection strings.
+3. PRESERVE main's current settings as the source of truth for ALL configuration. Code may come from other branches; config stays main's.
+4. If a merge would modify a protected file, STOP that file, keep main's version, log it, continue with the rest.
+5. Work on a temp integration branch. Do not touch main until the integration branch is green.
+
+=== PHASE 1 — INVENTORY ===
+- `git fetch --all --prune`
+- List every local + remote branch with: last commit date, author, ahead/behind count vs main.
+- Output a table: branch | ahead | behind | last_commit | status(active/stale/merged).
+
+=== PHASE 2 — PER-BRANCH AUDIT (iterate every branch) ===
+For each branch (newest activity first):
+- `git diff main..<branch> --stat`
+- Identify: new features, bug fixes, dependency changes, config changes (FLAG separately), dead/duplicate code.
+- Run available checks on that branch in isolation: install, lint, typecheck, build, tests. Record pass/fail.
+- Classify each branch: MERGE / PARTIAL-MERGE / SKIP (with reason).
+
+=== PHASE 3 — DEDUPE / SELECT LATEST-AND-GREATEST ===
+- Where multiple branches touch the same file/feature, pick the newest WORKING version (passes Phase 2 checks). Tie-break by most recent commit.
+- Build an explicit merge plan: ordered list of branches/commits/files to integrate.
+- Print the plan and the conflict map BEFORE merging.
+
+=== PHASE 4 — SAFE INTEGRATION ===
+- `git checkout main && git pull`
+- `git checkout -b integration/audit-merge`
+- Merge selected work in planned order. On conflict:
+  - For CODE files: resolve toward the latest working version.
+  - For PROTECTED/config files: KEEP main's version, log the skip, never auto-resolve toward the other branch.
+- Re-run full checks (install, lint, typecheck, build, test) on the integration branch.
+
+=== PHASE 5 — VERIFY DELTA AGAINST MAIN ===
+- `git diff main..integration/audit-merge --stat`
+- Confirm ZERO changes to protected/config files. If any appear, revert just those files to main's version.
+- Confirm build + tests green.
+
+=== PHASE 6 — MERGE TO MAIN (only if all green) ===
+- Merge `integration/audit-merge` into `main` with a NON-fast-forward merge commit (`--no-ff`).
+- Do NOT delete branches automatically. Do NOT push secrets. Do NOT alter Replit run/deploy config.
+
+=== FINAL OUTPUT ===
+Print:
+1. Branch audit table.
+2. Merge plan (what was taken from where).
+3. Skipped/preserved files (and why).
+4. Conflicts resolved + how.
+5. Final check results (lint/typecheck/build/test).
+6. Confirmation that main's config/settings are byte-identical to pre-merge.
+
+If anything blocks completion, report the exact blocker and the safe fallback state — do not leave main in a broken or half-merged state.
