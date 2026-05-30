@@ -6,13 +6,8 @@ dockerfile = "Dockerfile"
 
 [env]
 NODE_ENV = "production"
-OPENCLAW_PREFER_PNPM = "1"
-OPENCLAW_STATE_DIR = "/data"
-OPENCLAW_CONFIG_PATH = "/data/openclaw.json"
+PORT = "3000"
 NODE_OPTIONS = "--max-old-space-size=1536"
-
-[processes]
-app = "node dist/index.js gateway --port 3000 --bind lan"
 
 [http_service]
 internal_port = 3000
@@ -25,7 +20,3 @@ processes = ["app"]
 [[vm]]
 size = "shared-cpu-2x"
 memory = "2048mb"
-
-[mounts]
-source = "openclaw_data"
-destination = "/data"
