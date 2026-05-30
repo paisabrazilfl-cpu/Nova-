@@ -1,2 +1,3 @@
-- [Nova workspace context & AI awareness](nova-workspace-context.md) — workspace files only inline on literal name match; put must-use content in the index.html system prompt (bump PROMPT_VERSION).
-- [Nova voice & speed levers](nova-voice-and-speed.md) — only `settings.model` controls speed (no bob.js edit); model-migration lists must match full ids w/ one-time guard; browser TTS ignores `ttsVoice` (uses `voiceName`+`speechRate`), human voice needs OpenAI key.
+- [GitHub PAT git push](github-pat-push.md) — classic-PAT push fails with bearer extraheader; use the x-access-token URL form.
+- [Render API deploy](render-deploy.md) — service create returns 402 until a card is on the account, even for the free plan; create-service body shape that worked.
+- [Replit DB external reachability](replit-db-external-reachability.md) — Replit DATABASE_URL host is `helium` (internal-only); external hosts (Render/Fly) cannot reach it, need a separate external Postgres URL.
