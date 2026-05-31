@@ -1433,5 +1433,59 @@ Use when Robert asks about quantum mechanics, superposition, entanglement, measu
 })();
 </script>
 <script src="/assets/bob.js"></script>
+<script>
+/* Hide Nova's trailing GLOBAL_STATE / scratchpad signature from the chat view.
+   The block is still produced by the model and captured server-side for memory
+   continuity — this only strips it from what the user sees in the transcript. */
+(function () {
+  // Returns: true = trailing signature block, null = empty node (safe to drop
+  // and keep scanning), false = real content (stop).
+  function isSignature(el) {
+    if (!el) return false;
+    var t = (el.textContent || '').replace(/\u00a0/g, ' ').trim();
+    if (!t) return null;
+    if (/^scratchpad\b\s*:?/i.test(t)) return true;
+    if (/^\{?\s*"?GLOBAL_STATE"?\s*[:=]/.test(t)) return true;
+    if (/^GLOBAL_STATE\b/.test(t)) return true;
+    return false;
+  }
+  function strip(root) {
+    // Assistant bubbles only — never the Settings memory panel or prompt textarea.
+    var bodies = root.querySelectorAll('.msg-row.bot .md-content');
+    if (!bodies.length) bodies = root.querySelectorAll('.msg-row.bot');
+    for (var b = 0; b < bodies.length; b++) {
+      var body = bodies[b];
+      if (body.closest('#scratchpad-list, .scratchpad-list, #settings-modal')) continue;
+      // Remove ONLY trailing signature block(s); stop at the first real content
+      // block so the visible reply can never be truncated.
+      var guard = 0;
+      while (body.lastElementChild && guard++ < 16) {
+        var sig = isSignature(body.lastElementChild);
+        if (sig === false) break;
+        body.removeChild(body.lastElementChild);
+      }
+    }
+  }
+  var scheduled = false, obs;
+  function run() {
+    scheduled = false;
+    if (obs) obs.disconnect();
+    try { strip(document.body); } catch (e) {}
+    if (obs) obs.observe(document.body, { childList: true, subtree: true, characterData: true });
+  }
+  function schedule() {
+    if (scheduled) return;
+    scheduled = true;
+    (window.requestAnimationFrame || window.setTimeout)(run);
+  }
+  function boot() {
+    obs = new MutationObserver(schedule);
+    obs.observe(document.body, { childList: true, subtree: true, characterData: true });
+    run();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
+</script>
 </body>
 </html>
