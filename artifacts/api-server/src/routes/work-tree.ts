@@ -47,6 +47,7 @@ function apiNode(n: Record<string, unknown>) {
     result: String(n.result ?? ""),
     verification: String(n.verification ?? ""),
     attempts: Number(n.attempts ?? 0),
+    trace: String(n.trace ?? ""),
     createdAt: new Date(n.createdAt as string).toISOString(),
     updatedAt: new Date(n.updatedAt as string).toISOString(),
   };

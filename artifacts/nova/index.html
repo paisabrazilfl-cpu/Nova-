@@ -833,7 +833,7 @@ body {
         <circle cx="18" cy="20" r="2"/>
         <path d="M12 6v4M12 10c0 2-6 2-6 8M12 10c0 2 6 2 6 8"/>
       </svg>
-      Work Tree
+      Super Nova
     </button>
     <button id="settings-btn">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -1059,13 +1059,13 @@ body {
 <div id="wt-overlay" class="ws-overlay" hidden>
   <div class="ws-panel wt-panel" role="dialog" aria-modal="true" aria-labelledby="wt-title">
     <header class="ws-header">
-      <h2 id="wt-title">Work Tree</h2>
+      <h2 id="wt-title">Super Nova</h2>
       <div class="ws-header-actions">
         <button id="wt-refresh-btn" title="Refresh">Refresh</button>
         <button id="wt-close-btn" aria-label="Close" title="Close">✕</button>
       </div>
     </header>
-    <p class="ws-muted ws-tiny" style="padding:0 18px;margin:2px 0 0;">Give Nova a goal. She decomposes it into a recursive task tree, then reasons through each leaf — plan, execute, verify, correct — to a final report.</p>
+    <p class="ws-muted ws-tiny" style="padding:0 18px;margin:2px 0 0;">Give Nova a goal. She decomposes it into a recursive task tree, then works each leaf with real tools — fetch, search, compute — plan, execute, verify, correct — to a final report.</p>
     <div class="wt-body">
       <aside class="wt-left">
         <div class="wt-compose">
@@ -1497,6 +1497,28 @@ INPUT → Parse Tone/Workspace → Adjust Hormone/Valence Vectors → Run Active
     }
   }
 
+  function renderTrace(raw) {
+    if (!raw) return '';
+    var steps;
+    try { steps = JSON.parse(raw); } catch (_) { return ''; }
+    if (!Array.isArray(steps) || !steps.length) return '';
+    var rows = steps.map(function (s) {
+      var args = '';
+      try {
+        var a = (s && s.args) || {};
+        var k = a.url || a.query || a.command || a.path || a.prompt || '';
+        args = k ? ' ' + esc(String(k).slice(0, 80)) : '';
+      } catch (_) {}
+      var cls = (s && s.ok === false) ? ' bad' : '';
+      var res = esc(String((s && s.result) || '').slice(0, 220));
+      return '<div class="wt-tool' + cls + '"><span class="wt-tool-name">' +
+        esc(String((s && s.tool) || '?')) + '</span>' + args +
+        (res ? '<div class="wt-tool-res">' + res + '</div>' : '') + '</div>';
+    }).join('');
+    return '<details class="wt-trace"><summary>Tools used · ' + steps.length +
+      '</summary>' + rows + '</details>';
+  }
+
   function renderTree(nodes) {
     var byParent = {};
     nodes.forEach(function (n) {
@@ -1506,11 +1528,12 @@ INPUT → Parse Tone/Workspace → Adjust Hormone/Valence Vectors → Run Active
     function walk(key, depth) {
       var kids = byParent[key] || [];
       return kids.map(function (n) {
-        var hasBody = n.detail || n.result || n.verification;
+        var hasBody = n.detail || n.result || n.verification || n.trace;
         var verifyCls = (n.status === 'failed' || /rejected|error/i.test(n.verification || '')) ? ' bad' : '';
         var canRetry = n.kind === 'terminal' && n.status === 'failed';
         var body = '<div class="wt-node-body">' +
           (n.detail ? '<div class="wt-node-detail">' + esc(n.detail) + '</div>' : '') +
+          renderTrace(n.trace) +
           (n.result ? '<div class="wt-node-result">' + esc(n.result) + '</div>' : '') +
           (n.verification ? '<div class="wt-node-verify' + verifyCls + '">Verify: ' + esc(n.verification) + '</div>' : '') +
           (canRetry ? '<button class="wt-retry-btn" data-retry-node="' + n.id + '">Retry node</button>' : '') +

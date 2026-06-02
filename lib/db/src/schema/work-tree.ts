@@ -46,6 +46,10 @@ export const workTreeNodesTable = pgTable("work_tree_nodes", {
   result: text("result").notNull().default(""),
   verification: text("verification").notNull().default(""),
   attempts: integer("attempts").notNull().default(0),
+  // Super Nova tool-use trace: JSON array of {attempt, step, tool, args, ok,
+  // result} records captured by the ReAct loop while executing this terminal
+  // node. Empty string when the node did no tool calls (pure reasoning).
+  trace: text("trace").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

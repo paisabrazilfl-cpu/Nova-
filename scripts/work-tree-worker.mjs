@@ -11,8 +11,11 @@
 //   3. When the tree is fully resolved it SYNTHESIZES a final report and marks
 //      the run done.
 //
-// "Execution" here is LLM reasoning only — it produces each terminal node's
-// deliverable as text and self-verifies it. It runs no shell/code/repo actions.
+// "Execution" runs SUPER NOVA's tool-use loop: each terminal node is driven
+// through a bounded ReAct loop (scripts/super-nova-tools.mjs) so it can fetch
+// URLs, search the web, generate images and — when SUPER_NOVA_EXEC is set —
+// run code/shell/file ops, then self-verifies the deliverable. Safe tools are
+// always on; dangerous tools are OFF unless SUPER_NOVA_EXEC is set.
 //
 // Governance: honors GOVERNANCE.json autonomyEnabled as a hard kill switch
 // (when false the worker idles). Storage is plain Postgres (DATABASE_URL, or
@@ -22,6 +25,11 @@ import pg from "pg";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  toolCatalogText,
+  runTool,
+  toolsEnabledDangerous,
+} from "./super-nova-tools.mjs";
 
 const { Pool } = pg;
 
@@ -43,6 +51,9 @@ const MAX_DEPTH = Number(process.env.WORK_TREE_MAX_DEPTH || 3);
 const MAX_NODES = Number(process.env.WORK_TREE_MAX_NODES || 60);
 // A terminal node gets one execute + up to this many correction passes.
 const MAX_CORRECTIONS = Number(process.env.WORK_TREE_MAX_CORRECTIONS || 1);
+// Max model<->tool round trips per terminal execution attempt (Super Nova
+// ReAct loop). Bounds spend and latency so one node can't loop forever.
+const MAX_TOOL_STEPS = Number(process.env.SUPER_NOVA_MAX_TOOL_STEPS || 8);
 // Global mutual exclusion across daemon instances. Arbitrary stable lock id.
 const ADVISORY_LOCK_ID = 778120454;
 
@@ -112,13 +123,15 @@ async function incrementRunsToday() {
   );
 }
 
-async function callLLM({ system, user, maxTokens = 1500, temperature = 0.3, model }) {
+async function chatCompletion({
+  messages,
+  maxTokens = 1500,
+  temperature = 0.3,
+  model,
+}) {
   const body = {
     model: model || DEFAULT_MODEL,
-    messages: [
-      { role: "system", content: system },
-      { role: "user", content: user },
-    ],
+    messages,
     max_tokens: maxTokens,
     temperature,
     stream: false,
@@ -144,6 +157,42 @@ async function callLLM({ system, user, maxTokens = 1500, temperature = 0.3, mode
   } finally {
     clearTimeout(timer);
   }
+}
+
+// Single-shot system+user convenience (decompose/verify/synthesize use this).
+async function callLLM({ system, user, maxTokens = 1500, temperature = 0.3, model }) {
+  return chatCompletion({
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+    maxTokens,
+    temperature,
+    model,
+  });
+}
+
+// Tolerant JSON parse for the agent's ReAct replies. Tries a strict parse of
+// the (de-fenced) text first, then falls back to the largest {...} slice.
+function parseAgentJson(raw) {
+  let text = String(raw || "").trim();
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fence) text = fence[1].trim();
+  try {
+    return JSON.parse(text);
+  } catch {
+    /* fall through */
+  }
+  const b = text.indexOf("{");
+  const e = text.lastIndexOf("}");
+  if (b !== -1 && e > b) {
+    try {
+      return JSON.parse(text.slice(b, e + 1));
+    } catch {
+      /* give up */
+    }
+  }
+  return null;
 }
 
 function extractJson(raw) {
@@ -360,14 +409,29 @@ async function decompose(run, nodes, node) {
   return { expanded: true };
 }
 
+// Execute one terminal node as a bounded ReAct tool-use loop. The model either
+// calls a tool ({tool,args}) — whose result is fed back — or returns the final
+// deliverable ({final}). Returns { result, trace } where trace records every
+// tool call made (for the UI). Falls back to plain text if the model never
+// emits valid protocol JSON.
 async function executeTerminal(run, nodes, node, priorIssues) {
+  const dangerous = toolsEnabledDangerous();
+  const catalog = toolCatalogText(dangerous);
   const system =
-    "You are NOVA executing one leaf task of a larger plan. Produce the actual " +
-    "deliverable for THIS task — the finished work product, not a description of " +
-    "how you would do it. Be concrete, correct, and self-contained. If the task " +
-    "is open-ended, make and state reasonable assumptions. Do not fabricate " +
-    "facts; if something cannot be known, say so explicitly.";
-  const user =
+    "You are SUPER NOVA executing one leaf task of a larger plan. You have REAL " +
+    "tools — use them to gather facts, fetch data, run computations, and produce " +
+    "the actual finished deliverable for THIS task (the work product itself, not " +
+    "a description of how you would do it). Never fabricate a fact you could " +
+    "obtain with a tool; if something genuinely cannot be obtained, say so.\n\n" +
+    "TOOLS:\n" +
+    catalog +
+    "\n\n" +
+    "PROTOCOL — reply with STRICT JSON only, no prose outside the JSON, exactly " +
+    "one object, either:\n" +
+    '  {"thought": "<brief>", "tool": "<name>", "args": { ... }}   to call a tool, or\n' +
+    '  {"thought": "<brief>", "final": "<the complete finished deliverable as a string>"}   when done.\n' +
+    "Use tool results as you go. Emit final as soon as the deliverable is complete.";
+  const baseUser =
     `OVERALL GOAL:\n${clip(run.goal, 2000)}\n\n` +
     (ancestorContext(nodes, node)
       ? `WHERE THIS FITS:\n${ancestorContext(nodes, node)}\n\n`
@@ -376,14 +440,81 @@ async function executeTerminal(run, nodes, node, priorIssues) {
     (priorIssues
       ? `A previous attempt was rejected by the verifier for these issues — fix them:\n${clip(priorIssues, 1500)}\n\n`
       : "") +
-    "Deliver the completed work now.";
-  return callLLM({
-    system,
-    user,
+    "Begin. Use tools as needed, then deliver the completed work.";
+  const messages = [
+    { role: "system", content: system },
+    { role: "user", content: baseUser },
+  ];
+  const trace = [];
+  const ctx = { runId: run.id };
+
+  for (let step = 0; step < MAX_TOOL_STEPS; step++) {
+    const raw = await chatCompletion({
+      messages,
+      model: run.model,
+      maxTokens: 2000,
+      temperature: 0.4,
+    });
+    const obj = parseAgentJson(raw);
+    if (!obj) {
+      messages.push({ role: "assistant", content: raw });
+      messages.push({
+        role: "user",
+        content:
+          "Your reply was not valid JSON. Respond with STRICT JSON only per the protocol.",
+      });
+      continue;
+    }
+    if (obj.final != null && obj.tool == null) {
+      const result =
+        typeof obj.final === "string" ? obj.final : JSON.stringify(obj.final);
+      return { result, trace };
+    }
+    if (obj.tool) {
+      const exec = await runTool(String(obj.tool), obj.args || {}, ctx);
+      trace.push({
+        step: step + 1,
+        tool: String(obj.tool),
+        args: obj.args || {},
+        ok: !(exec && exec.error),
+        result: clip(JSON.stringify(exec), 1200),
+      });
+      messages.push({ role: "assistant", content: raw });
+      messages.push({
+        role: "user",
+        content: `TOOL RESULT (${obj.tool}):\n${clip(JSON.stringify(exec), 4000)}`,
+      });
+      continue;
+    }
+    // Neither a tool call nor a final — nudge back onto protocol.
+    messages.push({ role: "assistant", content: raw });
+    messages.push({
+      role: "user",
+      content:
+        'Respond with either a {"tool", "args"} call or a {"final": "..."} deliverable.',
+    });
+  }
+
+  // Budget exhausted — force a final answer from what was gathered.
+  messages.push({
+    role: "user",
+    content:
+      'Tool budget reached. Output your best final deliverable now as {"final": "..."} — STRICT JSON only.',
+  });
+  const raw = await chatCompletion({
+    messages,
     model: run.model,
     maxTokens: 2000,
     temperature: 0.4,
   });
+  const obj = parseAgentJson(raw);
+  const result =
+    obj && obj.final != null
+      ? typeof obj.final === "string"
+        ? obj.final
+        : JSON.stringify(obj.final)
+      : raw;
+  return { result, trace };
 }
 
 async function verify(run, node, result) {
@@ -419,14 +550,23 @@ async function verify(run, node, result) {
   }
 }
 
-// Run one terminal node through execute -> verify -> correct (bounded).
+// Run one terminal node through execute -> verify -> correct (bounded). The
+// Super Nova tool-use trace from every attempt is accumulated and persisted so
+// the UI can show exactly what the node did.
 async function runTerminal(run, nodes, node) {
   let issues = "";
   let result = "";
   let verification = "";
   let passed = false;
+  let trace = [];
   for (let attempt = 0; attempt <= MAX_CORRECTIONS; attempt++) {
-    result = await executeTerminal(run, nodes, node, issues);
+    const ex = await executeTerminal(run, nodes, node, issues);
+    result = ex.result;
+    if (ex.trace && ex.trace.length) {
+      trace = trace.concat(
+        ex.trace.map((t) => ({ attempt: attempt + 1, ...t })),
+      );
+    }
     const v = await verify(run, node, result);
     passed = v.pass;
     verification = v.pass
@@ -440,6 +580,7 @@ async function runTerminal(run, nodes, node) {
     result: clip(result, 8000),
     verification: clip(verification, 2000),
     attempts: (node.attempts || 0) + 1,
+    trace: trace.length ? clip(JSON.stringify(trace), 12000) : "",
   });
   return passed;
 }

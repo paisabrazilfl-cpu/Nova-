@@ -118,3 +118,4 @@ channel = "stable-25_05"
 
 [userenv.shared]
 SCRATCHPAD_DATABASE_URL = "postgresql://nova:c5LyHhCkMG0BmZY0ocsbRGfmPRxxlMmV@dpg-d8dmksf7f7vs73cd3ic0-a.oregon-postgres.render.com:5432/nova_sdk8?sslmode=no-verify"
+SUPER_NOVA_EXEC = "1"

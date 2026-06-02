@@ -229,6 +229,8 @@ components:
           type: string
         attempts:
           type: integer
+        trace:
+          type: string
         createdAt:
           type: string
         updatedAt:
@@ -246,6 +248,7 @@ components:
         - result
         - verification
         - attempts
+        - trace
         - createdAt
         - updatedAt
     WorkTreeRunDetail:

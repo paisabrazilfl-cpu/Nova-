@@ -79,6 +79,7 @@ export const GetWorkTreeRunResponse = zod.object({
   "result": zod.string(),
   "verification": zod.string(),
   "attempts": zod.number(),
+  "trace": zod.string(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 }))
