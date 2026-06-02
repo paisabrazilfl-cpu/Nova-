@@ -1471,15 +1471,18 @@ Use when Robert asks about quantum mechanics, superposition, entanglement, measu
    The block is still produced by the model and captured server-side for memory
    continuity — this only strips it from what the user sees in the transcript. */
 (function () {
-  // Returns: true = trailing signature block, null = empty node (safe to drop
-  // and keep scanning), false = real content (stop).
-  function isSignature(el) {
-    if (!el) return false;
-    var t = (el.textContent || '').replace(/\u00a0/g, ' ').trim();
-    if (!t) return null;
+  function elText(el) {
+    return el ? (el.textContent || '').replace(/\u00a0/g, ' ').trim() : '';
+  }
+  // True when a rendered block *begins* Nova's terminal GLOBAL_STATE /
+  // scratchpad signature (heading, paragraph, or fenced code — any form).
+  function isSigStart(t) {
+    if (!t) return false;
     if (/^scratchpad\b\s*:?/i.test(t)) return true;
-    if (/^\{?\s*"?GLOBAL_STATE"?\s*[:=]/.test(t)) return true;
-    if (/^GLOBAL_STATE\b/.test(t)) return true;
+    // GLOBAL_STATE that opens a block (heading "GLOBAL_STATE (…)", "GLOBAL_STATE = {",
+    // `{ "GLOBAL_STATE":`, or the bare token) — but NOT prose like "GLOBAL_STATE is…".
+    if (/^\{?\s*"?GLOBAL_STATE"?\s*[:=({]/i.test(t)) return true;
+    if (/^\{?\s*"?GLOBAL_STATE"?\s*$/i.test(t)) return true;
     return false;
   }
   // Render the latest GLOBAL_STATE block as an ASCII bar graph in the sidebar.
@@ -1515,6 +1518,37 @@ Use when Robert asks about quantum mechanics, superposition, entanglement, measu
     });
     graph.textContent = lines.join('\n');
   }
+  // Remove the terminal GLOBAL_STATE/scratchpad signature region from one
+  // assistant bubble. Unlike a naive "strip trailing matching blocks" pass, this
+  // finds where the signature STARTS (even when markdown split the JSON across
+  // several <p>/heading blocks, or a blank line broke it up) and removes that
+  // block plus everything after it — so no fragment can leak into the transcript.
+  function stripBody(body, isLast) {
+    var kids = body.children;
+    if (!kids || !kids.length) return;
+    var i, anchor = -1;
+    for (i = kids.length - 1; i >= 0; i--) {
+      if (isSigStart(elText(kids[i]))) { anchor = i; break; }
+    }
+    if (anchor === -1) return;
+    // Absorb a preceding intro heading/label (e.g. "# GLOBAL_STATE (...)") and
+    // any empty nodes that belong to the same signature region.
+    var start = anchor;
+    for (i = anchor - 1; i >= 0; i--) {
+      var ti = elText(kids[i]);
+      if (!ti) { start = i; continue; }
+      if (isSigStart(ti)) { start = i; continue; }
+      break;
+    }
+    // Feed the whole region (all fragments joined) to the sidebar graph before
+    // deleting it — keeps the visualization while hiding it from chat.
+    if (isLast) {
+      var buf = '';
+      for (i = start; i < kids.length; i++) buf += elText(kids[i]) + '\n';
+      try { renderGlobalState(buf); } catch (e) {}
+    }
+    while (kids.length > start) body.removeChild(kids[kids.length - 1]);
+  }
   function strip(root) {
     // Assistant bubbles only — never the Settings memory panel or prompt textarea.
     var bodies = root.querySelectorAll('.msg-row.bot .md-content');
@@ -1522,18 +1556,7 @@ Use when Robert asks about quantum mechanics, superposition, entanglement, measu
     for (var b = 0; b < bodies.length; b++) {
       var body = bodies[b];
       if (body.closest('#scratchpad-list, .scratchpad-list, #settings-modal')) continue;
-      var lastBody = (b === bodies.length - 1);
-      // Remove ONLY trailing signature block(s); stop at the first real content
-      // block so the visible reply can never be truncated.
-      var guard = 0;
-      while (body.lastElementChild && guard++ < 16) {
-        var sig = isSignature(body.lastElementChild);
-        if (sig === false) break;
-        if (sig === true && lastBody) {
-          try { renderGlobalState(body.lastElementChild.textContent || ''); } catch (e) {}
-        }
-        body.removeChild(body.lastElementChild);
-      }
+      try { stripBody(body, b === bodies.length - 1); } catch (e) {}
     }
   }
   var scheduled = false, obs;
