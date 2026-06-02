@@ -62,16 +62,19 @@ function clip(s, n) {
   return s.length > n ? s.slice(0, n) : s;
 }
 
-// GOVERNANCE.json kill switch — when autonomyEnabled is false the worker idles.
+// GOVERNANCE.json kill switch (SOUL.md §26) — when autonomyEnabled is false the
+// worker idles. Fails CLOSED: an unreadable/corrupt governance file must stop the
+// worker rather than let it run unsupervised.
 function autonomyEnabled() {
   try {
     const raw = fs.readFileSync(GOVERNANCE_PATH, "utf8");
     const g = JSON.parse(raw);
     return g.autonomyEnabled !== false;
-  } catch {
-    // Missing/unreadable governance file: fail open (run) — the run is
-    // user-initiated, not an autonomous heartbeat.
-    return true;
+  } catch (e) {
+    console.error(
+      `work-tree-worker: governance unreadable (${e.message || e}); failing closed`,
+    );
+    return false;
   }
 }
 
@@ -155,6 +158,20 @@ async function runningRuns() {
     `SELECT * FROM work_tree_runs WHERE status = 'running' ORDER BY created_at ASC`,
   );
   return rows;
+}
+
+// Crash recovery (single-instance worker holds the advisory lock). Terminal
+// nodes are executed atomically within a tick, so any terminal left "running"
+// is orphaned from a killed process — reset it to pending so it re-executes.
+async function recoverOrphans() {
+  const { rowCount } = await pool.query(
+    `UPDATE work_tree_nodes
+        SET status = 'pending', updated_at = now()
+      WHERE status = 'running' AND kind = 'terminal'`,
+  );
+  if (rowCount) {
+    console.log(`work-tree-worker: recovered ${rowCount} orphaned terminal node(s)`);
+  }
 }
 
 async function freshRun(id) {
@@ -335,9 +352,15 @@ async function verify(run, node, result) {
     const obj = extractJson(raw);
     return { pass: obj.pass === true, issues: clip(obj.issues || "", 1500) };
   } catch {
-    // If the verifier output is unparseable, accept the work but record the note
-    // rather than blocking the run forever.
-    return { pass: true, issues: "verifier output unparseable; accepted" };
+    // SOUL.md §24: the verifier is a hard gate. An unparseable verdict must NOT
+    // pass — treat it as a failure so the bounded correction loop retries, and if
+    // it never produces a parseable pass the node is marked failed (not done).
+    return {
+      pass: false,
+      issues:
+        "verifier output unparseable — cannot confirm the work; re-state the " +
+        "result and respond with STRICT JSON only.",
+    };
   }
 }
 
@@ -511,6 +534,7 @@ async function advanceRun(run) {
 }
 
 let running = false;
+let recovered = false;
 async function tick() {
   if (running) return;
   running = true;
@@ -524,6 +548,13 @@ async function tick() {
     ]);
     locked = lk.rows[0]?.ok === true;
     if (!locked) return;
+
+    // Crash recovery runs once, AFTER we own the global advisory lock — so a
+    // second instance starting up can never reset another live worker's nodes.
+    if (!recovered) {
+      await recoverOrphans();
+      recovered = true;
+    }
 
     // Promote one pending run to running per tick, then advance all running runs.
     await claimRun();

@@ -826,6 +826,15 @@ body {
   </div>
 
   <div class="sidebar-footer">
+    <button id="worktree-btn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="4" r="2"/>
+        <circle cx="6" cy="20" r="2"/>
+        <circle cx="18" cy="20" r="2"/>
+        <path d="M12 6v4M12 10c0 2-6 2-6 8M12 10c0 2 6 2 6 8"/>
+      </svg>
+      Work Tree
+    </button>
     <button id="settings-btn">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="3"/>
@@ -1043,6 +1052,34 @@ body {
     </div>
     <div id="ws-empty" class="ws-empty">No files yet. Click <b>+ Add file</b> to upload.</div>
     <ul id="ws-list" class="ws-list"></ul>
+  </div>
+</div>
+
+<!-- ── Work Tree planner panel ── -->
+<div id="wt-overlay" class="ws-overlay" hidden>
+  <div class="ws-panel wt-panel" role="dialog" aria-modal="true" aria-labelledby="wt-title">
+    <header class="ws-header">
+      <h2 id="wt-title">Work Tree</h2>
+      <div class="ws-header-actions">
+        <button id="wt-refresh-btn" title="Refresh">Refresh</button>
+        <button id="wt-close-btn" aria-label="Close" title="Close">✕</button>
+      </div>
+    </header>
+    <p class="ws-muted ws-tiny" style="padding:0 18px;margin:2px 0 0;">Give Nova a goal. She decomposes it into a recursive task tree, then reasons through each leaf — plan, execute, verify, correct — to a final report.</p>
+    <div class="wt-body">
+      <aside class="wt-left">
+        <div class="wt-compose">
+          <textarea id="wt-goal" class="form-input" rows="3" placeholder="Describe the goal to break down and complete…"></textarea>
+          <button id="wt-start-btn" type="button">Start run</button>
+          <div id="wt-compose-msg" class="ws-tiny ws-muted"></div>
+        </div>
+        <div class="wt-runs-label">Runs</div>
+        <div id="wt-runs" class="wt-runs"><p class="ws-muted ws-tiny">Loading…</p></div>
+      </aside>
+      <section class="wt-right" id="wt-detail">
+        <div class="wt-empty ws-muted">Select a run, or start a new one.</div>
+      </section>
+    </div>
   </div>
 </div>
 
@@ -1335,6 +1372,271 @@ INPUT → Parse Tone/Workspace → Adjust Hormone/Valence Vectors → Run Active
     if (!t || !t.closest) return;
     if (t.closest('#settings-btn')) { setTimeout(render, 60); return; }
     if (t.closest('#scratchpad-refresh')) { render(); }
+  });
+})();
+</script>
+<style>
+  .wt-panel { display:flex; flex-direction:column; }
+  .wt-body { display:flex; flex:1; min-height:0; gap:0; }
+  .wt-left {
+    width:300px; min-width:300px; border-right:1px solid rgba(255,255,255,0.08);
+    display:flex; flex-direction:column; min-height:0;
+  }
+  .wt-compose { padding:14px 16px; border-bottom:1px solid rgba(255,255,255,0.06); display:flex; flex-direction:column; gap:8px; }
+  .wt-compose textarea { resize:vertical; }
+  #wt-start-btn {
+    background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff; border:none;
+    border-radius:8px; padding:9px 14px; font-size:13px; font-weight:600; cursor:pointer;
+  }
+  #wt-start-btn:hover { filter:brightness(1.08); }
+  #wt-start-btn:disabled { opacity:0.55; cursor:default; }
+  .wt-runs-label {
+    font-size:11px; letter-spacing:0.08em; text-transform:uppercase; font-weight:600;
+    color:#94a3b8; padding:12px 16px 6px;
+  }
+  .wt-runs { overflow-y:auto; flex:1; padding:0 10px 12px; display:flex; flex-direction:column; gap:6px; }
+  .wt-run {
+    background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07);
+    border-radius:8px; padding:9px 11px; cursor:pointer; text-align:left;
+  }
+  .wt-run:hover { background:rgba(255,255,255,0.06); }
+  .wt-run.active { border-color:#8b5cf6; background:rgba(139,92,246,0.12); }
+  .wt-run-goal { font-size:12.5px; color:#e2e8f0; line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .wt-run-meta { font-size:10.5px; color:#64748b; margin-top:5px; display:flex; align-items:center; gap:7px; }
+  .wt-right { flex:1; min-width:0; overflow-y:auto; padding:18px 20px; }
+  .wt-empty { display:flex; height:100%; align-items:center; justify-content:center; font-size:13px; }
+  .wt-badge {
+    display:inline-block; font-size:10px; letter-spacing:0.04em; text-transform:uppercase;
+    font-weight:600; border-radius:999px; padding:2px 8px;
+  }
+  .wt-st-pending { background:rgba(148,163,184,0.18); color:#cbd5e1; }
+  .wt-st-running { background:rgba(96,165,250,0.2); color:#93c5fd; }
+  .wt-st-done { background:rgba(52,211,153,0.18); color:#6ee7b7; }
+  .wt-st-failed { background:rgba(248,113,113,0.18); color:#fca5a5; }
+  .wt-st-cancelled { background:rgba(148,163,184,0.14); color:#94a3b8; }
+  .wt-detail-head { display:flex; align-items:flex-start; gap:12px; justify-content:space-between; margin-bottom:6px; }
+  .wt-detail-goal { font-size:15px; font-weight:600; color:#f1f5f9; line-height:1.4; }
+  .wt-detail-sub { font-size:11px; color:#64748b; margin-bottom:14px; }
+  #wt-cancel-btn {
+    background:rgba(248,113,113,0.12); color:#fca5a5; border:1px solid rgba(248,113,113,0.3);
+    border-radius:7px; padding:5px 11px; font-size:12px; cursor:pointer; white-space:nowrap;
+  }
+  #wt-cancel-btn:hover { background:rgba(248,113,113,0.2); }
+  .wt-section-title {
+    font-size:11px; letter-spacing:0.08em; text-transform:uppercase; font-weight:600;
+    color:#7dd3fc; margin:18px 0 10px; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:5px;
+  }
+  .wt-node {
+    border:1px solid rgba(255,255,255,0.07); border-radius:8px; padding:9px 11px;
+    margin-bottom:7px; background:rgba(255,255,255,0.02);
+  }
+  .wt-node-head { display:flex; align-items:center; gap:8px; cursor:pointer; }
+  .wt-node-title { font-size:13px; color:#e2e8f0; flex:1; }
+  .wt-node-kind { font-size:10px; color:#64748b; }
+  .wt-node-body { margin-top:8px; padding-top:8px; border-top:1px dashed rgba(255,255,255,0.08); display:none; }
+  .wt-node.open .wt-node-body { display:block; }
+  .wt-node-detail { font-size:12px; color:#94a3b8; line-height:1.5; margin-bottom:6px; }
+  .wt-node-result { font-size:12.5px; color:#cbd5e1; line-height:1.55; white-space:pre-wrap; word-break:break-word; }
+  .wt-node-verify { font-size:11px; color:#7dd3fc; margin-top:7px; }
+  .wt-node-verify.bad { color:#fca5a5; }
+  .wt-report {
+    background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08);
+    border-radius:10px; padding:14px 16px; font-size:13px; color:#e2e8f0;
+    line-height:1.6; white-space:pre-wrap; word-break:break-word;
+  }
+  .wt-spin { display:inline-block; width:11px; height:11px; border:2px solid rgba(147,197,253,0.3); border-top-color:#93c5fd; border-radius:50%; animation:wt-rot 0.7s linear infinite; }
+  @keyframes wt-rot { to { transform:rotate(360deg); } }
+</style>
+<script>
+// Work Tree planner — self-contained. Lets Robert submit a goal, watches NOVA
+// recursively decompose it into a task tree, run each leaf (plan→execute→verify
+// →correct) and synthesize a final report. Plain fetch to /api/work-tree/*;
+// does not touch bob.js internals. Backend daemon: scripts/work-tree-worker.mjs.
+(function () {
+  var ACTIVE = ['pending', 'running'];
+  var selectedId = null;
+  var pollTimer = null;
+
+  function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+  function fmtDate(s) { try { return new Date(s).toLocaleString(); } catch (_) { return ''; } }
+  function badge(status) {
+    var st = String(status || 'pending');
+    var label = st;
+    var spin = (st === 'running') ? '<span class="wt-spin"></span> ' : '';
+    return '<span class="wt-badge wt-st-' + esc(st) + '">' + spin + esc(label) + '</span>';
+  }
+  function isActive(status) { return ACTIVE.indexOf(String(status)) !== -1; }
+
+  function overlay() { return document.getElementById('wt-overlay'); }
+  function isOpen() { var o = overlay(); return o && !o.hidden; }
+
+  async function loadRuns() {
+    var box = document.getElementById('wt-runs');
+    try {
+      var res = await fetch('/api/work-tree/runs');
+      if (!res.ok) throw new Error('http ' + res.status);
+      var data = await res.json();
+      var runs = (data && data.runs) || [];
+      if (!runs.length) {
+        box.innerHTML = '<p class="ws-muted ws-tiny">No runs yet.</p>';
+        return runs;
+      }
+      box.innerHTML = runs.map(function (r) {
+        return '<button class="wt-run' + (r.id === selectedId ? ' active' : '') + '" data-run-id="' + r.id + '">' +
+          '<div class="wt-run-goal">' + esc(r.goal) + '</div>' +
+          '<div class="wt-run-meta">' + badge(r.status) + '<span>' + fmtDate(r.createdAt) + '</span></div>' +
+          '</button>';
+      }).join('');
+      return runs;
+    } catch (_) {
+      box.innerHTML = '<p class="ws-muted ws-tiny">Could not load runs.</p>';
+      return [];
+    }
+  }
+
+  function renderTree(nodes) {
+    var byParent = {};
+    nodes.forEach(function (n) {
+      var k = n.parentId == null ? 'root' : n.parentId;
+      (byParent[k] = byParent[k] || []).push(n);
+    });
+    function walk(key, depth) {
+      var kids = byParent[key] || [];
+      return kids.map(function (n) {
+        var hasBody = n.detail || n.result || n.verification;
+        var verifyCls = (n.status === 'failed' || /rejected|error/i.test(n.verification || '')) ? ' bad' : '';
+        var body = '<div class="wt-node-body">' +
+          (n.detail ? '<div class="wt-node-detail">' + esc(n.detail) + '</div>' : '') +
+          (n.result ? '<div class="wt-node-result">' + esc(n.result) + '</div>' : '') +
+          (n.verification ? '<div class="wt-node-verify' + verifyCls + '">Verify: ' + esc(n.verification) + '</div>' : '') +
+          '</div>';
+        return '<div class="wt-node" data-node-id="' + n.id + '" style="margin-left:' + (depth * 16) + 'px">' +
+          '<div class="wt-node-head">' + badge(n.status) +
+          '<span class="wt-node-title">' + esc(n.title) + '</span>' +
+          '<span class="wt-node-kind">' + esc(n.kind) + (n.attempts ? ' · ' + n.attempts + 'x' : '') + '</span>' +
+          '</div>' + (hasBody ? body : '') +
+          '</div>' + walk(n.id, depth + 1);
+      }).join('');
+    }
+    return walk('root', 0);
+  }
+
+  async function loadDetail(id) {
+    var box = document.getElementById('wt-detail');
+    try {
+      var res = await fetch('/api/work-tree/runs/' + id);
+      if (res.status === 404) { box.innerHTML = '<div class="wt-empty ws-muted">Run not found.</div>'; return null; }
+      if (!res.ok) throw new Error('http ' + res.status);
+      var data = await res.json();
+      var run = data.run, nodes = data.nodes || [];
+      var done = nodes.filter(function (n) { return n.status === 'done'; }).length;
+      var failed = nodes.filter(function (n) { return n.status === 'failed'; }).length;
+      var html = '<div class="wt-detail-head">' +
+        '<div><div class="wt-detail-goal">' + esc(run.goal) + '</div></div>' +
+        (isActive(run.status) ? '<button id="wt-cancel-btn" data-cancel-id="' + run.id + '">Cancel</button>' : '') +
+        '</div>' +
+        '<div class="wt-detail-sub">' + badge(run.status) + ' &nbsp; ' +
+        nodes.length + ' nodes · ' + done + ' done' + (failed ? ' · ' + failed + ' failed' : '') +
+        (run.model ? ' · ' + esc(run.model) : '') + ' · ' + fmtDate(run.updatedAt) + '</div>';
+
+      if (run.error) {
+        html += '<div class="wt-node-verify bad" style="margin-bottom:10px;">' + esc(run.error) + '</div>';
+      }
+      if (run.report) {
+        html += '<div class="wt-section-title">Final report</div><div class="wt-report">' + esc(run.report) + '</div>';
+      } else if (isActive(run.status)) {
+        html += '<div class="wt-section-title">Working</div><p class="ws-muted ws-tiny"><span class="wt-spin"></span> Nova is reasoning through the tree…</p>';
+      }
+      html += '<div class="wt-section-title">Task tree</div>';
+      html += nodes.length ? renderTree(nodes) : '<p class="ws-muted ws-tiny">Seeding the tree…</p>';
+      box.innerHTML = html;
+      return run;
+    } catch (_) {
+      box.innerHTML = '<div class="wt-empty ws-muted">Could not load this run.</div>';
+      return null;
+    }
+  }
+
+  async function refresh() {
+    var runs = await loadRuns();
+    var anyActive = runs.some(function (r) { return isActive(r.status); });
+    var selRun = null;
+    if (selectedId != null) selRun = await loadDetail(selectedId);
+    var detailActive = selRun && isActive(selRun.status);
+    schedulePoll(anyActive || detailActive);
+  }
+
+  function schedulePoll(active) {
+    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+    if (active && isOpen()) {
+      pollTimer = setTimeout(function () { refresh(); }, 4000);
+    }
+  }
+
+  async function startRun() {
+    var ta = document.getElementById('wt-goal');
+    var btn = document.getElementById('wt-start-btn');
+    var msg = document.getElementById('wt-compose-msg');
+    var goal = (ta.value || '').trim();
+    if (!goal) { msg.textContent = 'Enter a goal first.'; return; }
+    btn.disabled = true; msg.textContent = 'Submitting…';
+    try {
+      var res = await fetch('/api/work-tree/runs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ goal: goal })
+      });
+      if (!res.ok) throw new Error('http ' + res.status);
+      var run = await res.json();
+      ta.value = '';
+      msg.textContent = 'Run started.';
+      selectedId = run.id;
+      await refresh();
+    } catch (_) {
+      msg.textContent = 'Could not start the run.';
+    } finally {
+      btn.disabled = false;
+      setTimeout(function () { if (msg) msg.textContent = ''; }, 2500);
+    }
+  }
+
+  async function cancelRun(id) {
+    try {
+      await fetch('/api/work-tree/runs/' + id + '/cancel', { method: 'POST' });
+    } catch (_) {}
+    await refresh();
+  }
+
+  function open() {
+    var o = overlay();
+    if (!o) return;
+    o.hidden = false;
+    refresh();
+  }
+  function close() {
+    var o = overlay();
+    if (o) o.hidden = true;
+    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+  }
+
+  document.addEventListener('click', function (ev) {
+    var t = ev.target;
+    if (!t || !t.closest) return;
+    if (t.closest('#worktree-btn')) { open(); return; }
+    if (t.closest('#wt-close-btn')) { close(); return; }
+    if (t.closest('#wt-refresh-btn')) { refresh(); return; }
+    if (t.closest('#wt-start-btn')) { startRun(); return; }
+    var cancelBtn = t.closest('#wt-cancel-btn');
+    if (cancelBtn) { cancelRun(Number(cancelBtn.getAttribute('data-cancel-id'))); return; }
+    var runBtn = t.closest('.wt-run');
+    if (runBtn) { selectedId = Number(runBtn.getAttribute('data-run-id')); refresh(); return; }
+    var nodeHead = t.closest('.wt-node-head');
+    if (nodeHead) { var n = nodeHead.closest('.wt-node'); if (n) n.classList.toggle('open'); return; }
+    if (t.closest('#wt-overlay') && t.id === 'wt-overlay') { close(); return; }
+  });
+
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape' && isOpen()) close();
   });
 })();
 </script>
