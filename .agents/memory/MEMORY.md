@@ -2,3 +2,4 @@
 - [Render API deploy](render-deploy.md) — service create returns 402 until a card is on the account, even for the free plan; create-service body shape that worked.
 - [Replit DB external reachability](replit-db-external-reachability.md) — Replit DATABASE_URL host is `helium` (internal-only); external hosts (Render/Fly) cannot reach it, need a separate external Postgres URL.
 - [Render Postgres connect](render-postgres-connect.md) — external conn needs IP allowlist opened (defaults null) + `sslmode=no-verify`; app uses internal string, Replit daemon distills via SCRATCHPAD_DATABASE_URL.
+- [GLOBAL_STATE stripper](global-state-stripper.md) — anchor every marker to line-start, gate block removal on an explicit opener; balances leak vs over-strip.

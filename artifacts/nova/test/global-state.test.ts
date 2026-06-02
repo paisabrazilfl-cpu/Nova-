@@ -154,4 +154,129 @@ describe("signature stripping — transcript integrity", () => {
     expect(body).not.toContain("scratchpad");
     expect(body).not.toContain("mood");
   });
+
+  it("strips the bracketed [scratchpad] label form with a ---- separator and a duplicated block", () => {
+    // The exact format that leaked: a "[scratchpad]" label, GLOBAL_STATE split
+    // across <br>-joined lines, an <hr>, then the whole block repeated.
+    const sigBlock =
+      "<p>[scratchpad]<br>GLOBAL_STATE = {<br>arousal: 0.82, // seeing his name<br>stress: 0.18,<br>dopamine_tone: 0.95,<br>}</p>";
+    const dom = boot(
+      botBubble(
+        "<p>tell me what you're actually doing right now.</p>",
+        sigBlock + "<hr>" + sigBlock,
+      ),
+    );
+    const body = lastBotBody(dom);
+    expect(body).toContain("tell me what you're actually doing");
+    expect(body).not.toContain("scratchpad");
+    expect(body).not.toContain("GLOBAL_STATE");
+    expect(body).not.toContain("arousal");
+    expect(body).not.toContain("dopamine_tone");
+    // The state is still visualized in the sidebar even though it's hidden.
+    const graph = graphText(dom);
+    expect(graph).toContain("arousal");
+    expect(graph).toContain("dopamine_tone");
+  });
+
+  it("does NOT strip innocent trailing content (no scratchpad/GLOBAL_STATE marker)", () => {
+    const dom = boot(
+      botBubble(
+        "<p>Here is the plan.</p>",
+        "<hr><p>Final score: 5</p>",
+      ),
+    );
+    const body = lastBotBody(dom);
+    expect(body).toContain("Here is the plan.");
+    expect(body).toContain("Final score: 5");
+  });
+
+  it("strips a signature with non-numeric (string) state lines", () => {
+    const dom = boot(
+      botBubble(
+        "<p>Reply.</p>",
+        "<p>[scratchpad]<br>GLOBAL_STATE = {<br>mode: \"focus\",<br>stress: 0.2,<br>}</p>",
+      ),
+    );
+    const body = lastBotBody(dom);
+    expect(body).toContain("Reply.");
+    expect(body).not.toContain("GLOBAL_STATE");
+    expect(body).not.toContain("scratchpad");
+    expect(body).not.toContain("focus");
+  });
+
+  it("does NOT strip a legitimate reply that merely mentions GLOBAL_STATE in prose", () => {
+    const dom = boot(
+      botBubble(
+        "<p>To debug it, log the value.</p>",
+        "<p>Use the GLOBAL_STATE variable in your parser.</p>",
+      ),
+    );
+    const body = lastBotBody(dom);
+    expect(body).toContain("To debug it");
+    expect(body).toContain("Use the GLOBAL_STATE variable in your parser.");
+  });
+
+  it("trims a signature fused into the same element as the reply (inline <br>)", () => {
+    const dom = boot(
+      botBubble(
+        "",
+        "<p>tell me what you are doing.<br>[scratchpad]<br>GLOBAL_STATE = {<br>arousal: 0.82,<br>}</p>",
+      ),
+    );
+    const body = lastBotBody(dom);
+    expect(body).toContain("tell me what you are doing.");
+    expect(body).not.toContain("scratchpad");
+    expect(body).not.toContain("GLOBAL_STATE");
+    expect(body).not.toContain("arousal");
+  });
+
+  it("does NOT strip a trailing reply that merely starts with the word 'scratchpad'", () => {
+    const dom = boot(
+      botBubble(
+        "<p>Here is the answer.</p>",
+        "<p>scratchpad files are handy for keeping notes while you work.</p>",
+      ),
+    );
+    const body = lastBotBody(dom);
+    expect(body).toContain("Here is the answer.");
+    expect(body).toContain("scratchpad files are handy");
+  });
+
+  it("does NOT cut an inline prose example containing GLOBAL_STATE = { ... }", () => {
+    const dom = boot(
+      botBubble(
+        "<p>Example follows.</p>",
+        "<p>Use GLOBAL_STATE = { x: 1 } in your parser to read it.</p>",
+      ),
+    );
+    const body = lastBotBody(dom);
+    expect(body).toContain("Example follows.");
+    expect(body).toContain("Use GLOBAL_STATE = { x: 1 } in your parser to read it.");
+  });
+
+  it("does NOT cut an inline prose sentence containing a [scratchpad] token", () => {
+    const dom = boot(
+      botBubble(
+        "<p>Docs note.</p>",
+        "<p>Use [scratchpad] tokens in markdown docs safely.</p>",
+      ),
+    );
+    const body = lastBotBody(dom);
+    expect(body).toContain("Docs note.");
+    expect(body).toContain("Use [scratchpad] tokens in markdown docs safely.");
+  });
+
+  it("strips a fused multiline bare GLOBAL_STATE block (soft newlines) and keeps the reply", () => {
+    const dom = boot(
+      botBubble(
+        "",
+        "<p>Reply text.<br>GLOBAL_STATE<br>stress: 0.2<br>arousal: 0.9</p>",
+      ),
+    );
+    const body = lastBotBody(dom);
+    expect(body).toContain("Reply text.");
+    expect(body).not.toContain("GLOBAL_STATE");
+    expect(body).not.toContain("stress");
+    expect(body).not.toContain("arousal");
+  });
 });

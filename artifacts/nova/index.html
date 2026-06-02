@@ -1476,14 +1476,93 @@ Use when Robert asks about quantum mechanics, superposition, entanglement, measu
   }
   // True when a rendered block *begins* Nova's terminal GLOBAL_STATE /
   // scratchpad signature (heading, paragraph, or fenced code — any form).
+  // Handles label forms "scratchpad", "scratchpad:", "[scratchpad]" and the
+  // GLOBAL_STATE opener "GLOBAL_STATE = {", `{ "GLOBAL_STATE":`, "[scratchpad]
+  // GLOBAL_STATE", or the bare token — but NOT prose like "GLOBAL_STATE is…".
   function isSigStart(t) {
     if (!t) return false;
-    if (/^scratchpad\b\s*:?/i.test(t)) return true;
-    // GLOBAL_STATE that opens a block (heading "GLOBAL_STATE (…)", "GLOBAL_STATE = {",
-    // `{ "GLOBAL_STATE":`, or the bare token) — but NOT prose like "GLOBAL_STATE is…".
-    if (/^\{?\s*"?GLOBAL_STATE"?\s*[:=({]/i.test(t)) return true;
-    if (/^\{?\s*"?GLOBAL_STATE"?\s*$/i.test(t)) return true;
+    // scratchpad must be *label-shaped* — "[scratchpad]…", "scratchpad: …", or
+    // the bare token alone — never prose like "scratchpad is disabled here".
+    if (/^\[\s*scratchpad\s*\]/i.test(t)) return true;
+    if (/^"?scratchpad"?\s*:/i.test(t)) return true;
+    if (/^"?scratchpad"?\s*$/i.test(t)) return true;
+    if (/^[\[\(\{\s]*"?GLOBAL_STATE"?\s*[:=({]/i.test(t)) return true;
+    if (/^[\[\(\{\s]*"?GLOBAL_STATE"?\s*$/i.test(t)) return true;
     return false;
+  }
+  // A single JSON-ish state line: key : (string | number | bool | null), with an
+  // optional trailing comma and // comment. Deliberately anchored + value-typed
+  // so it matches state dumps ("mode: \"focus\",", "stress: 0.2,") but NOT prose.
+  function isStateLine(t) {
+    return /^"?[A-Za-z_][\w ]*"?\s*[:=]\s*("(?:[^"\\]|\\.)*"|'[^']*'|true|false|null|-?\d[\d.]*)\s*,?\s*(\/\/.*)?$/i.test(t);
+  }
+  // True when a block is part of the trailing signature *region*: an empty node
+  // (hr/br), a scratchpad/GLOBAL_STATE marker, a brace/bracket fragment, a
+  // "----" style separator, a JSON-ish state line, or a block holding two-or-more
+  // "key: value" pairs. Absorbs the markdown-fragmented pieces of the signature
+  // (including non-numeric lines) so the backward walk can reach the real marker.
+  // NOTE: a bare mention of "GLOBAL_STATE" in prose is intentionally NOT counted.
+  function isSigCont(t) {
+    if (!t) return true;
+    if (isSigStart(t)) return true;
+    if (/^[\[\]\{\}\(\)]/.test(t)) return true;
+    if (/^[-*_]{3,}\s*$/.test(t)) return true;
+    if (isStateLine(t)) return true;
+    if ((t.match(/"?[A-Za-z_][\w ]*"?\s*[:=]\s*("[^"]*"|true|false|null|-?\d[\d.]*)/gi) || []).length >= 2) return true;
+    return false;
+  }
+  // Earliest index of an EXPLICIT signature marker inside a string, or -1.
+  // Every marker form is honored only at a LINE START so instructional prose
+  // ("Use GLOBAL_STATE = { ... } here", "the [scratchpad] token in markdown") is
+  // never cut mid-reply. The real signature always begins its own line.
+  function inlineMarkerOffset(s) {
+    if (!s) return -1;
+    var rxs = [
+      /(^|\n)[ \t]*\[\s*scratchpad\s*\]/i,
+      /(^|\n)[ \t]*scratchpad[ \t]*:/i,
+      /(^|\n)[ \t]*\{?[ \t]*"?GLOBAL_STATE"?\s*[:=({]/i,
+      /(^|\n)[ \t]*"?GLOBAL_STATE"?[ \t]*(?=\n|$)/i
+    ];
+    var best = -1;
+    for (var i = 0; i < rxs.length; i++) {
+      var m = rxs[i].exec(s);
+      if (m) {
+        var idx = m.index;
+        if (m[1] === '\n') idx += 1; // start at the marker, keep the newline with the reply
+        if (best < 0 || idx < best) best = idx;
+      }
+    }
+    return best;
+  }
+  // Trim a signature that is fused into the SAME element as the reply (reply and
+  // "[scratchpad] GLOBAL_STATE …" joined by <br> or a soft newline). Removes the
+  // marker child + everything after it, or splits the text node at the marker.
+  // Returns the removed signature text (for the sidebar graph) or '' if none.
+  function trimInline(el) {
+    if (!el || el.nodeType !== 1) return '';
+    var ch = el.childNodes, i, j, removed;
+    for (i = 0; i < ch.length; i++) {
+      var node = ch[i];
+      if (node.nodeType === 1 && isSigStart(elText(node))) {
+        removed = '';
+        for (j = ch.length - 1; j >= i; j--) { removed = elText(ch[j]) + '\n' + removed; el.removeChild(ch[j]); }
+        var prev = el.childNodes[el.childNodes.length - 1];
+        if (prev && prev.nodeName === 'BR') el.removeChild(prev);
+        return removed;
+      }
+      if (node.nodeType === 3) {
+        var s = node.nodeValue || '', off = inlineMarkerOffset(s);
+        if (off >= 0) {
+          removed = s.slice(off);
+          for (j = ch.length - 1; j > i; j--) { removed += '\n' + elText(ch[j]); el.removeChild(ch[j]); }
+          if (off === 0) el.removeChild(node);
+          else node.nodeValue = s.slice(0, off);
+          while (el.lastChild && el.lastChild.nodeName === 'BR') el.removeChild(el.lastChild);
+          return removed;
+        }
+      }
+    }
+    return '';
   }
   // Render the latest GLOBAL_STATE block as an ASCII bar graph in the sidebar.
   // Reads the signature text BEFORE it is stripped from the chat bubble, so the
@@ -1526,28 +1605,34 @@ Use when Robert asks about quantum mechanics, superposition, entanglement, measu
   function stripBody(body, isLast) {
     var kids = body.children;
     if (!kids || !kids.length) return;
-    var i, anchor = -1;
-    for (i = kids.length - 1; i >= 0; i--) {
-      if (isSigStart(elText(kids[i]))) { anchor = i; break; }
+    var buf = '';
+    // 1) Walk backward over the trailing run of signature-region blocks (markdown
+    // can split the signature across many <p>/heading/<hr> blocks, label it
+    // "[scratchpad]", or duplicate it). Stop at the first block that is NOT part
+    // of the region — that's the end of the real reply.
+    var n = kids.length, i, start = n, hasMarker = false;
+    for (i = n - 1; i >= 0; i--) {
+      var t = elText(kids[i]);
+      if (!isSigCont(t)) break;
+      start = i;
+      if (isSigStart(t)) hasMarker = true; // explicit opener only — not bare prose
     }
-    if (anchor === -1) return;
-    // Absorb a preceding intro heading/label (e.g. "# GLOBAL_STATE (...)") and
-    // any empty nodes that belong to the same signature region.
-    var start = anchor;
-    for (i = anchor - 1; i >= 0; i--) {
-      var ti = elText(kids[i]);
-      if (!ti) { start = i; continue; }
-      if (isSigStart(ti)) { start = i; continue; }
-      break;
-    }
-    // Feed the whole region (all fragments joined) to the sidebar graph before
-    // deleting it — keeps the visualization while hiding it from chat.
-    if (isLast) {
-      var buf = '';
+    // Only strip a block region when it actually contains a scratchpad/GLOBAL_STATE
+    // opener — never remove an innocent trailing list, separator, or JSON block.
+    if (start < n && hasMarker) {
       for (i = start; i < kids.length; i++) buf += elText(kids[i]) + '\n';
-      try { renderGlobalState(buf); } catch (e) {}
+      while (kids.length > start) body.removeChild(kids[kids.length - 1]);
     }
-    while (kids.length > start) body.removeChild(kids[kids.length - 1]);
+    // 2) Trim a signature fused into the SAME element as the reply (reply and
+    // "[scratchpad] GLOBAL_STATE …" joined by <br> / a soft newline). This runs
+    // on the last remaining block so no inline fragment can survive.
+    var lastEl = body.children[body.children.length - 1];
+    if (lastEl) {
+      try { var cut = trimInline(lastEl); if (cut) buf += cut + '\n'; } catch (e) {}
+    }
+    // Feed the removed signature text to the sidebar graph (last bubble only) —
+    // keeps the visualization while hiding the block from the transcript.
+    if (isLast && buf) { try { renderGlobalState(buf); } catch (e) {} }
   }
   function strip(root) {
     // Assistant bubbles only — never the Settings memory panel or prompt textarea.
