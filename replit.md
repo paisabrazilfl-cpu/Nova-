@@ -34,6 +34,7 @@ Nova is a personal AI assistant and autonomous agent system for Robert Matthews.
 - `tools/anti-hallucinate/` — Deterministic fact-verification CLI
 - `SOUL.md` — Agent runtime contract (26 rules)
 - `AGENTS.md` — Operator-grade response rules
+- `EXHAUSTIVE_RECURSIVE_WORK_TREE.md` — Methodology spec: recursive task decomposition + work cycle to terminal completion (doc only)
 - `DIRECTIVE.md` — Full system directive
 - `IDENTITY.md` — Nova identity
 - `USER.md` — Operator identity (Robert Matthews)
