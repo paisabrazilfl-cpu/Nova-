@@ -1,0 +1,218 @@
+You are redesigning NOVA, a single-page AI chat application.
+
+IMPORTANT:
+Nova is NOT a multi-page marketing website.
+Nova is NOT a landing page.
+Nova is NOT a legal/business brochure site.
+Nova is a focused, premium, single-page chat app experience.
+
+Your mission:
+Transform the existing Nova UI into a stunning, modern, highly usable, responsive, production-grade single-page chat interface.
+
+Follow this execution protocol exactly:
+
+1. READ FIRST
+- Inspect the repository structure.
+- Read the package files, app entrypoints, routing setup, components, styles, config files, and existing UI logic.
+- Do not invent files, APIs, routes, or components.
+- Identify the actual framework being used before editing.
+- Preserve existing working functionality unless explicitly replacing broken UI behavior.
+
+2. ACCEPTANCE CRITERIA
+The final UI must satisfy all of these:
+
+A. Single-page app
+- Keep Nova as one main app interface.
+- Do not create a multi-page marketing site.
+- Do not add marketing pages like About, Pricing, Blog, Features, Contact, FAQ, etc.
+- Any secondary controls should be drawers, modals, popovers, tabs, or panels inside the same app shell.
+
+B. Premium chat experience
+- The app should feel like a serious AI product.
+- The main focus must be the chat conversation.
+- The UI should include a polished app shell:
+  - left sidebar or collapsible conversation rail
+  - main chat thread
+  - premium message composer
+  - optional right-side context/tools panel if appropriate
+  - responsive mobile layout
+- Chat messages must look beautiful and readable.
+- User and assistant messages should be visually distinct.
+- Long responses must remain readable with good typography, spacing, and code block styling.
+- Empty state should feel premium and useful, not generic.
+
+C. Visual design level
+- Make the UI look cutting-edge, elegant, and intentional.
+- Use a strong visual identity for “Nova.”
+- Design language should suggest intelligence, clarity, speed, and depth.
+- Use modern gradients, soft shadows, glass surfaces, subtle borders, clean typography, smooth spacing, and refined microinteractions.
+- Avoid cheap SaaS template vibes.
+- Avoid random decorative clutter.
+- Avoid a homepage/landing-page layout.
+
+D. User experience
+- The chat composer must be excellent:
+  - multiline input
+  - clear send action
+  - attachment/tool buttons if existing functionality supports them
+  - keyboard-friendly behavior
+  - disabled/loading states
+  - clear placeholder copy
+- Include useful interaction states:
+  - hover
+  - focus
+  - active
+  - loading
+  - empty
+  - error
+- Keep important actions obvious.
+- Reduce visual noise.
+- Prioritize readability and speed.
+
+E. Responsive behavior
+- Desktop: polished app shell with generous spacing.
+- Tablet: adaptive sidebars/panels.
+- Mobile: app should become a clean full-screen chat experience.
+- No horizontal scrolling.
+- Composer must remain usable on mobile.
+- Chat history must scroll correctly.
+- Header/sidebar must not crush the chat area.
+
+F. Accessibility
+- Use semantic HTML where possible.
+- Maintain keyboard navigation.
+- Add visible focus states.
+- Ensure text contrast is strong.
+- Buttons and inputs need accessible labels where appropriate.
+- Do not rely only on color to communicate state.
+
+G. Performance
+- Do not add heavy unnecessary dependencies.
+- Do not add animation libraries unless already present or truly justified.
+- Prefer CSS/Tailwind/native transitions.
+- Keep bundle impact low.
+- Avoid giant background videos or irrelevant visual assets.
+
+3. SELF-REFLECTION BEFORE EDITING
+Before making changes, explicitly reason through:
+- What is the current UI architecture?
+- What should be preserved?
+- What is the minimum set of changes that produces the biggest visual improvement?
+- What could break chat functionality?
+- What responsive risks exist?
+- What styling system is already in use?
+
+4. PLAN
+Create a focused plan before editing:
+- Files to change.
+- Components to improve.
+- Styling approach.
+- Responsive strategy.
+- Verification steps.
+
+5. EXECUTE
+Implement the redesign directly.
+
+The target interface should include, where compatible with the existing app:
+
+APP SHELL
+- Full-height viewport app layout.
+- Refined background with subtle depth.
+- Nova brand area.
+- Conversation/sidebar area.
+- Main chat panel.
+- Composer pinned naturally at bottom.
+- Scrollable message thread.
+
+SIDEBAR / CONVERSATION RAIL
+- Collapsible on smaller screens.
+- New chat button.
+- Conversation list styling.
+- Search or filter only if existing logic supports it.
+- Settings/profile button only if existing logic supports it.
+- Do not fake backend actions.
+
+MAIN CHAT AREA
+- Elegant header with Nova identity/status.
+- Chat messages with strong spacing.
+- Assistant messages designed for long-form answers.
+- User bubbles designed for clarity.
+- Typing/loading indicator if existing state supports it.
+- Empty state with suggested prompts/cards.
+- Smooth scroll behavior if already supported or easy to add safely.
+
+COMPOSER
+- Premium input card.
+- Multiline text area.
+- Send button with excellent visual state.
+- Optional model/tools/attachment controls only if real.
+- Helper text for keyboard shortcuts if accurate.
+- Mobile-safe spacing.
+
+DESIGN STYLE
+Use this general direction:
+- Dark premium interface by default unless the current app is clearly light-only.
+- Deep navy/charcoal/black base.
+- Subtle blue/violet/cyan “Nova” glow accents.
+- Glassy panels with restrained transparency.
+- Fine border lines.
+- Soft shadows.
+- Rounded corners.
+- Clean typography.
+- Smooth hover/focus states.
+- No childish neon overload.
+- No generic stock imagery.
+- No marketing hero sections.
+
+6. NO FAKE FUNCTIONALITY
+Do not add buttons that pretend to work.
+Do not add pages.
+Do not add routes unless the existing app already requires them.
+Do not add fake authentication.
+Do not add fake pricing, testimonials, blog, sales copy, or marketing CTAs.
+Do not add placeholder APIs.
+Do not hide broken functionality behind pretty UI.
+
+7. VERIFICATION
+After implementation:
+- Run install only if dependencies are missing.
+- Run lint if available.
+- Run typecheck if available.
+- Run build if available.
+- Run tests if available.
+- Start the app locally.
+- Use Playwright/browser inspection to validate the UI.
+
+Playwright validation must check:
+- Desktop viewport.
+- Tablet viewport.
+- Mobile viewport.
+- Chat thread visibility.
+- Composer usability.
+- Sidebar/collapsible behavior.
+- No horizontal overflow.
+- Buttons and inputs are clickable.
+- Focus states are visible.
+- No obvious console errors.
+- No broken layouts.
+- No marketing pages were added.
+
+8. CORRECTION LOOP
+If validation fails:
+- Read the exact error.
+- Identify root cause.
+- Patch.
+- Re-run the failed command/test/browser check.
+- Repeat up to 3 times.
+
+9. FINAL REPORT
+Report only evidence-based results:
+- What files changed.
+- What UI improvements were made.
+- What commands passed or failed.
+- What Playwright checks were completed.
+- Any known limitations.
+- Confirm whether Nova remains a single-page chat app.
+
+Final goal:
+Nova should feel like a premium AI command center/chat interface — elegant, fast, responsive, useful, and visually memorable — while staying strictly a single-page chat app.
