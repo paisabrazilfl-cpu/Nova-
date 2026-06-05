@@ -151,26 +151,17 @@ body {
 .history-item .hi-del:hover { color: var(--danger); }
 
 .workspaces-section { padding: 4px 12px 10px; border-top: 1px solid var(--border); flex-shrink: 0; }
-.ws-toggle, .gs-head {
+.ws-toggle {
   width: 100%; background: transparent; border: 0; cursor: pointer;
   display: flex; align-items: center; gap: 6px;
   font-size: 0.68rem; color: var(--muted); text-transform: uppercase;
   letter-spacing: 0.08em; padding: 8px 4px 4px;
 }
-.ws-toggle:hover, .gs-head:hover { color: var(--text); }
+.ws-toggle:hover { color: var(--text); }
 .ws-chevron { width: 12px; height: 12px; flex-shrink: 0; transition: transform 0.18s ease; }
-.workspaces-section.collapsed .ws-chevron,
-.gs-panel.collapsed .ws-chevron { transform: rotate(-90deg); }
+.workspaces-section.collapsed .ws-chevron { transform: rotate(-90deg); }
 .ws-collapse { display: flex; flex-direction: column; max-height: 38vh; overflow-y: auto; }
 .workspaces-section.collapsed .ws-collapse { display: none; }
-.gs-panel { padding: 4px 12px 8px; border-top: 1px solid var(--border); flex-shrink: 0; }
-.gs-graph {
-  margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.62rem; line-height: 1.5; color: #c4b5e0;
-  white-space: pre; overflow-x: auto; max-height: 190px; overflow-y: auto;
-}
-.gs-panel.collapsed .gs-graph { display: none; }
-.gs-empty { color: var(--muted); }
 .workspace-tab {
   width: 100%; padding: 7px 10px; background: transparent;
   border: 0; color: var(--muted); font-size: 0.82rem; text-align: left;
@@ -844,14 +835,6 @@ body {
       <button class="ws-upload-btn" data-ws="quantum" title="Upload to Quantum"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
     </div>
     </div>
-  </div>
-
-  <div class="gs-panel" id="gs-panel">
-    <button class="gs-head" id="gs-toggle" type="button" aria-expanded="true" aria-controls="gs-graph">
-      <svg class="ws-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-      <span>Global State</span>
-    </button>
-    <pre class="gs-graph" id="gs-graph"><span class="gs-empty">Awaiting state&#8230;</span></pre>
   </div>
 
   <div class="sidebar-footer">
@@ -2058,7 +2041,7 @@ Use when Robert asks about quantum mechanics, superposition, entanglement, measu
 })();
 </script>
 <script>
-/* Sidebar collapsible sections (Workspaces, Global State). State persisted in
+/* Sidebar collapsible sections (Workspaces). State persisted in
    localStorage so it survives reloads. Workspaces defaults collapsed to give the
    chat history list more room. */
 (function () {
@@ -2082,7 +2065,6 @@ Use when Robert asks about quantum mechanics, superposition, entanglement, measu
   }
   function boot() {
     setupCollapse('workspaces-list', 'ws-toggle', 'nova-ws-collapsed', true);
-    setupCollapse('gs-panel', 'gs-toggle', 'nova-gs-collapsed', false);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
