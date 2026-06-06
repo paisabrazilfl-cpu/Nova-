@@ -13,25 +13,10 @@ const router = Router();
 const OPENAI_BASE = "https://api.openai.com";
 const OPENAI_KEY = process.env.OPENAI_API_KEY ?? "";
 
-// Gemini exposes an OpenAI-compatible surface, so we can reuse this same proxy:
-// for a `gemini-*` model we swap the upstream base + key and drop the leading
-// `/v1` (Gemini's compat paths live under `/v1beta/openai/...`). The OpenAI path
-// is left untouched, so nothing is torn out — provider is chosen per request by
-// the model name.
-const GEMINI_OPENAI_BASE =
-  "https://generativelanguage.googleapis.com/v1beta/openai";
-const GEMINI_KEY = process.env.GEMINI_API_KEY ?? "";
-
-function pickProvider(model: string): {
+function pickProvider(_model: string): {
   url: (path: string) => string;
   key: string;
 } {
-  if (model.startsWith("gemini") && GEMINI_KEY) {
-    return {
-      url: (path) => `${GEMINI_OPENAI_BASE}${path.replace(/^\/v1/, "")}`,
-      key: GEMINI_KEY,
-    };
-  }
   return { url: (path) => `${OPENAI_BASE}${path}`, key: OPENAI_KEY };
 }
 

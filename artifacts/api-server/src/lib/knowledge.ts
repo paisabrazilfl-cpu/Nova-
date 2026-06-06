@@ -4,30 +4,11 @@ import { sql } from "drizzle-orm";
 const OPENAI_BASE = "https://api.openai.com/v1";
 const OPENAI_EMBED_MODEL = "text-embedding-3-small";
 
-// Gemini's OpenAI-compatible embeddings endpoint. gemini-embedding-001 supports
-// a configurable output size, so we pin it to 1536 to match the vector(1536)
-// column — this keeps the schema unchanged when running on Gemini.
-const GEMINI_OPENAI_BASE =
-  "https://generativelanguage.googleapis.com/v1beta/openai";
-const GEMINI_EMBED_MODEL = "gemini-embedding-001";
-const EMBED_DIM = 1536;
-
-// Pick the embeddings provider. Gemini is preferred when its key is set (the
-// account in use has no OpenAI billing); falls back to OpenAI otherwise. Both
-// produce 1536-dim vectors so the stored column and search stay compatible.
 function embedConfig(): {
   url: string;
   key: string;
   body: Record<string, unknown>;
 } {
-  const gem = process.env.GEMINI_API_KEY ?? "";
-  if (gem) {
-    return {
-      url: `${GEMINI_OPENAI_BASE}/embeddings`,
-      key: gem,
-      body: { model: GEMINI_EMBED_MODEL, dimensions: EMBED_DIM },
-    };
-  }
   const oa = process.env.OPENAI_API_KEY ?? "";
   if (oa) {
     return {
@@ -36,7 +17,7 @@ function embedConfig(): {
       body: { model: OPENAI_EMBED_MODEL },
     };
   }
-  throw new Error("no embeddings provider configured (GEMINI_API_KEY or OPENAI_API_KEY)");
+  throw new Error("no embeddings provider configured (OPENAI_API_KEY)");
 }
 
 // Embed a single string (1536-dim). Uses a server-side key so the browser never

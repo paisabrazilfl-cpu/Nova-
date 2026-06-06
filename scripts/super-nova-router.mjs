@@ -21,10 +21,9 @@
 // If a role's chosen provider isn't configured, the router falls back to bitdeer
 // (the always-present default) so a half-set override can never break a run.
 
-// Default model for all roles. gemini-2.5-flash is fast, cheap, and returns
-// standard content (not reasoning_content), so the ReAct JSON protocol works
-// reliably. Override per-deployment with WORK_TREE_MODEL env var.
-const DEFAULT_MODEL = process.env.WORK_TREE_MODEL || "gemini-2.5-flash";
+// Default model for all roles. gpt-4o-mini is fast and cheap; upgrade to
+// gpt-4o for harder tasks. Override per-deployment with WORK_TREE_MODEL env var.
+const DEFAULT_MODEL = process.env.WORK_TREE_MODEL || "gpt-4o-mini";
 
 // All providers speak the OpenAI /chat/completions shape. baseURL has no trailing
 // slash; key is optional only for `local` (self-hosted servers often need none).
@@ -32,12 +31,6 @@ const PROVIDERS = {
   bitdeer: {
     baseURL: process.env.BITDEER_BASE_URL || "https://api-inference.bitdeer.ai/v1",
     key: process.env.BITDEER_API_KEY || "",
-  },
-  // Google Gemini via their OpenAI-compatible endpoint (same pattern used by
-  // the api-server proxy).  Leading /v1 is stripped inside the request path.
-  gemini: {
-    baseURL: "https://generativelanguage.googleapis.com/v1beta/openai",
-    key: process.env.GEMINI_API_KEY || "",
   },
   openai: {
     baseURL: process.env.OPENAI_BASE_URL || "https://api.openai.com/v1",
@@ -115,10 +108,9 @@ export function resolveRole(role, callerModel) {
     ? roleModelEnv || DEFAULT_MODEL
     : callerModel || roleModelEnv || DEFAULT_MODEL;
 
-  // Auto-route gemini-* models to the Gemini provider unless the caller has
-  // explicitly pointed the role at a different provider.
+  // Auto-route gpt-* models to OpenAI; everything else goes to bitdeer.
   let providerName = overrideProvider
-    || (model.startsWith("gemini-") ? "gemini" : "bitdeer");
+    || (model.startsWith("gpt-") ? "openai" : "bitdeer");
   let provider = PROVIDERS[providerName];
 
   if (!usable(provider, providerName)) {
@@ -126,14 +118,7 @@ export function resolveRole(role, callerModel) {
       console.warn(
         `super-nova-router: role '${role}' provider '${providerName}' not configured; falling back to bitdeer`,
       );
-      // If the resolved model is gemini-only (name won't work on Bitdeer),
-      // replace it with a known-good Bitdeer model to avoid a hard 400.
-      // Otherwise keep the caller's model if it looks Bitdeer-compatible.
-      if (model.startsWith("gemini-")) {
-        model = process.env.BITDEER_FALLBACK_MODEL || "moonshotai/Kimi-K2.6";
-      } else {
-        model = callerModel || DEFAULT_MODEL;
-      }
+      model = callerModel || DEFAULT_MODEL;
     }
     providerName = "bitdeer";
     provider = PROVIDERS.bitdeer;
@@ -191,28 +176,23 @@ export async function chatComplete({
   };
 
   // Fallback chain on 503/429 (overload / rate-limit):
-  //   attempt 0   — primary provider + model (gemini-2.5-flash via gemini)
+  //   attempt 0   — primary provider + model
   //   attempt 1   — same, after 2 s back-off
   //   attempt 2   — same, after 4 s back-off
-  //   attempt 3   — gemini-2.5-pro via gemini (separate quota bucket), 8 s back-off
-  //   attempt 4   — bitdeer + BITDEER_FALLBACK_MODEL (true last resort), 16 s back-off
+  //   attempt 3   — bitdeer + BITDEER_FALLBACK_MODEL (true last resort), 8 s back-off
   // Non-503/429 errors are thrown immediately (no point retrying a 400/401/404).
-  const MAX_ATTEMPTS = 5;
+  const MAX_ATTEMPTS = 4;
   let lastErr = null;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     if (attempt > 0) {
-      const delayMs = Math.min(2000 * 2 ** (attempt - 1), 16_000);
+      const delayMs = Math.min(2000 * 2 ** (attempt - 1), 8_000);
       await new Promise((ok) => setTimeout(ok, delayMs));
 
-      if (attempt === 3 && r.providerName === "gemini") {
-        // Switch to gemini-2.5-pro — same provider, different quota bucket.
-        console.warn(`router(${role}): gemini-2.5-flash overloaded — trying gemini-2.5-pro`);
-        body.model = "gemini-2.5-pro";
-      } else if (attempt === 4 && r.providerName !== "bitdeer") {
-        // Last resort: bitdeer with a non-gemini model.
+      if (attempt === 3 && r.providerName !== "bitdeer") {
+        // Last resort: bitdeer with a known-good model.
         const fallbackModel = process.env.BITDEER_FALLBACK_MODEL || "deepseek-ai/DeepSeek-V3";
         console.warn(
-          `router(${role}): all gemini attempts failed — falling back to bitdeer/${fallbackModel}`,
+          `router(${role}): primary provider overloaded — falling back to bitdeer/${fallbackModel}`,
         );
         r.providerName = "bitdeer";
         r.provider = PROVIDERS.bitdeer;

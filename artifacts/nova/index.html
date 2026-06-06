@@ -969,8 +969,6 @@ body {
     <div class="form-group" style="display:none">
       <label class="form-label">Model</label>
       <select class="form-input" id="s-model">
-        <option value="gemini-2.5-flash">gemini-2.5-flash</option>
-        <option value="gemini-2.5-pro">gemini-2.5-pro</option>
         <option value="gpt-4o">gpt-4o</option>
         <option value="gpt-4o-mini">gpt-4o-mini</option>
       </select>
@@ -1270,10 +1268,9 @@ INPUT → Parse Tone/Workspace → Adjust Hormone/Valence Vectors → Run Active
   // Chat and neural voice both route through the server proxy at /api/v1, which
   // injects the server-side key — no key ever lives in the browser. baseUrl/model
   // are forced here; the Bitdeer settings fields are hidden in the modal. The
-  // proxy routes gemini-* models to Gemini (the working provider) and everything
-  // else to OpenAI, so the model name picks the backend.
+  // proxy routes all models to OpenAI.
   if (s.baseUrl !== '/api/v1') { s.baseUrl = '/api/v1'; changed = true; }
-  if (!s.model || s.model.indexOf('gemini') !== 0) { s.model = 'gemini-2.5-flash'; changed = true; }
+  if (!s.model || s.model.startsWith('gemini')) { s.model = 'gpt-4o'; changed = true; }
   // Non-empty placeholder so bob.js sendDirect() fires; the proxy ignores it and
   // uses the server key.
   if (!s.apiKey || s.apiKey.indexOf('{env:') !== -1) { s.apiKey = 'proxy'; changed = true; }
