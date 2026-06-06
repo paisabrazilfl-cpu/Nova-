@@ -13,10 +13,32 @@ const router = Router();
 const OPENAI_BASE = "https://api.openai.com";
 const OPENAI_KEY = process.env.OPENAI_API_KEY ?? "";
 
-function pickProvider(_model: string): {
+// Bitdeer: OpenAI-compatible endpoint that hosts OSS + proprietary models.
+const BITDEER_BASE = "https://api-inference.bitdeer.ai";
+const BITDEER_KEY = process.env.BITDEER_API_KEY ?? "";
+
+// Google Gemini via their OpenAI-compatible shim.
+// Path stripping: their base already includes /v1beta/openai, so drop the
+// leading /v1 that the client sends (e.g. /v1/chat/completions → /chat/completions).
+const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/openai";
+const GEMINI_KEY = process.env.GEMINI_API_KEY ?? "";
+
+function pickProvider(model: string): {
   url: (path: string) => string;
   key: string;
 } {
+  // gemini-* → Google's OpenAI-compatible shim (strip leading /v1)
+  if (model.startsWith("gemini-") && GEMINI_KEY) {
+    return {
+      url: (path) => `${GEMINI_BASE}${path.replace(/^\/v1/, "")}`,
+      key: GEMINI_KEY,
+    };
+  }
+  // Everything else → Bitdeer (hosts gpt-*, deepseek-*, qwen-*, etc.)
+  // Fall back to OpenAI only if Bitdeer key is absent.
+  if (BITDEER_KEY) {
+    return { url: (path) => `${BITDEER_BASE}${path}`, key: BITDEER_KEY };
+  }
   return { url: (path) => `${OPENAI_BASE}${path}`, key: OPENAI_KEY };
 }
 
