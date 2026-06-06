@@ -4,8 +4,9 @@
 //
 // Two tiers:
 //   SAFE      — always available, no new secrets, low blast radius:
-//               http_fetch (SSRF-guarded), web_search (needs a provider key,
-//               degrades gracefully), image_generate (Bitdeer).
+//               http_fetch (SSRF-guarded), browser_fetch (Steel.dev — bypasses
+//               bot-protection / JS-rendered pages), web_search (Firecrawl →
+//               Brave fallback), image_generate (Bitdeer).
 //   DANGEROUS — code/shell/file execution. OFF by default. Only offered to the
 //               model when SUPER_NOVA_EXEC is set, because the Work Tree HTTP
 //               endpoint is unauthenticated and these tools run on the host.
@@ -270,12 +271,9 @@ async function webSearch(args) {
   // Try each configured provider in precedence order. A provider failure (bad
   // key → 401, rate limit, network error, or empty result) falls through to the
   // next provider instead of aborting, so one stale key can't disable search.
-  // Firecrawl is the most reliable provider — put it first so dead/rate-limited
-  // keys (Tavily 401, Brave quota) don't waste tool-budget steps before we reach
-  // a working result.  The full fallback chain is still intact.
+  // Firecrawl is primary; Brave is the fallback.  Tavily is not used.
   const providers = [
     { key: "FIRECRAWL_API_KEY", run: searchFirecrawl },
-    { key: "TAVILY_API_KEY", run: searchTavily },
     { key: "BRAVE_API_KEY", run: searchBrave },
   ];
   const configured = providers.filter((p) => process.env[p.key]);
@@ -283,8 +281,8 @@ async function webSearch(args) {
     return {
       error:
         "web_search unavailable: no search provider key set " +
-        "(TAVILY_API_KEY / BRAVE_API_KEY / FIRECRAWL_API_KEY). " +
-        "Use http_fetch on a known URL instead.",
+        "(FIRECRAWL_API_KEY / BRAVE_API_KEY). " +
+        "Use http_fetch or browser_fetch on a known URL instead.",
     };
   }
   const errors = [];
@@ -298,24 +296,6 @@ async function webSearch(args) {
     }
   }
   return { error: `all search providers failed (${errors.join("; ")})` };
-}
-
-async function searchTavily(q) {
-  const res = await fetch("https://api.tavily.com/search", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ api_key: process.env.TAVILY_API_KEY, query: q, max_results: 5 }),
-  });
-  if (!res.ok) throw new Error(`tavily ${res.status}`);
-  const j = await res.json();
-  return {
-    provider: "tavily",
-    results: (j.results || []).slice(0, 5).map((r) => ({
-      title: r.title,
-      url: r.url,
-      snippet: String(r.content || "").slice(0, 300),
-    })),
-  };
 }
 
 async function searchBrave(q) {
@@ -355,6 +335,52 @@ async function searchFirecrawl(q) {
       url: r.url,
       snippet: String(r.description || r.snippet || "").slice(0, 300),
     })),
+  };
+}
+
+// ── Steel.dev browser fetch ───────────────────────────────────────────────────
+// Uses a real headless browser via Steel.dev to fetch pages that block direct
+// HTTP (403, Cloudflare, JS-rendered content).  Falls back gracefully when the
+// key is absent so local/dev runs without Steel still work.
+
+function stripHtml(html) {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function browserFetch(args) {
+  const url = String(args.url || "").trim();
+  if (!url) return { error: "url required" };
+  if (!process.env.STEEL_API_KEY)
+    return { error: "browser_fetch unavailable: STEEL_API_KEY not set" };
+  const res = await fetch("https://api.steel.dev/v1/scrape", {
+    method: "POST",
+    headers: {
+      "Steel-Api-Key": process.env.STEEL_API_KEY,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ url, useProxy: true }),
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => "");
+    throw new Error(`steel ${res.status}: ${t.slice(0, 200)}`);
+  }
+  const j = await res.json();
+  // Steel returns {content:{html,markdown?}, metadata, links}
+  const text = (j.content && j.content.markdown)
+    ? j.content.markdown
+    : stripHtml((j.content && j.content.html) || "");
+  return {
+    url,
+    body: text.slice(0, 8000),
+    truncated: text.length > 8000,
+    links: (j.links || []).slice(0, 20).map((l) =>
+      typeof l === "string" ? l : l.href || l.url || ""
+    ),
   };
 }
 
@@ -443,11 +469,15 @@ async function readFile(args, ctx) {
 const SAFE_TOOLS = {
   http_fetch: {
     run: httpFetch,
-    desc: 'fetch an http/https URL. args: {url, method?, headers?, body?}. Private/internal/metadata addresses are blocked; redirects are not auto-followed. Returns {status, contentType, body (truncated)}.',
+    desc: 'fetch an http/https URL. args: {url, method?, headers?, body?}. Private/internal/metadata addresses are blocked; redirects are not auto-followed. Returns {status, contentType, body (truncated)}. Use this for plain HTTP APIs and public endpoints. If the site blocks bots (403, Cloudflare, JS-rendered), use browser_fetch instead.',
+  },
+  browser_fetch: {
+    run: browserFetch,
+    desc: 'fetch a URL using a real headless browser (Steel.dev). args: {url}. Bypasses bot-protection, Cloudflare, and JS-rendered pages that block http_fetch. Returns {body (text, up to 8000 chars), links}. Use this when http_fetch returns 403 or empty content on a real website.',
   },
   web_search: {
     run: webSearch,
-    desc: 'search the web. args: {query}. Needs a provider key; if none is set it returns an error telling you to use http_fetch on a known URL.',
+    desc: 'search the web via Firecrawl (primary) or Brave (fallback). args: {query}. Returns ranked results with title, url, snippet. Use this to discover URLs, then fetch them with http_fetch or browser_fetch.',
   },
   image_generate: {
     run: imageGenerate,
