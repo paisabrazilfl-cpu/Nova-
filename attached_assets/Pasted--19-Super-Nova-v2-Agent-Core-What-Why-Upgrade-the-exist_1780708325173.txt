@@ -1,0 +1,42 @@
+#19 - Super Nova v2 — Agent Core
+What & Why
+
+Upgrade the existing Work Tree agent into a structured, multi-role "Super Nova v2" agent brain with a pluggable model router. Today the worker is a single-loop recursive decomposer; this adds an explicit orchestration graph (plan → act → observe → reflect → critique) and named agent roles, plus a provider-agnostic model layer. This is the foundation every other Super Nova v2 capability builds on.
+
+Patterns drawn from the referenced projects: hermes-agent (structured tool-call/ReAct loop), langgraph (explicit graph/state-machine orchestration), autogen + crewai + agno (multi-role agents, roles/crew, lightweight agent+memory), awesome-openrouter + ollama + vllm + LocalAI (pluggable model routing across providers). These are heavyweight Python/Go services that cannot be embedded in this Node/TS app on Render, so we adopt their architecture natively in TypeScript rather than vendoring them.
+Done looks like
+
+    A Super Nova v2 run progresses through visible, named stages (plan, execute, observe, reflect, critique) instead of one opaque loop, and each stage's output is recorded on the run.
+    Distinct agent roles (planner, executor, critic, researcher) collaborate on a goal, each with its own system framing.
+    The model used for each role/stage is chosen by a central router; switching the default model or adding a new provider endpoint is a single config change, not a code rewrite.
+    Existing Work Tree runs still work end-to-end (no regression) and now show the richer staged trace in the Super Nova UI panel.
+    Anti-hallucination verification (SOUL.md §24) still gates factual outputs.
+
+Out of scope
+
+    New tools/browser/MCP/Fly (Task: Super Nova v2 — Tools).
+    Memory/RAG, scheduler/cron, package restructure (Task: Super Nova v2 — Memory & Scheduler).
+    Discord interface (Task: Super Nova v2 — Discord).
+    Running local model servers (Ollama/vLLM/LocalAI) on Render; the router only needs to support pointing at such an endpoint when one is configured.
+
+Steps
+
+    Model router — Add a provider-agnostic router that resolves a logical model name + role to a concrete provider/baseURL/key (Bitdeer and OpenAI from existing secrets now; OpenRouter/Ollama/vLLM/LocalAI as config-only additions). All worker LLM calls go through it.
+    Orchestration graph — Introduce an explicit state-machine wrapper around the recursive work-tree loop with named stages (plan, execute, observe, reflect, critique) and persisted per-stage results.
+    Agent roles — Define planner, executor, critic, and researcher roles with distinct framings, and route each stage to the appropriate role via the model router.
+    Persistence + trace — Extend the work-tree run/node records so the staged trace and role attributions are stored and returned by the existing run-detail API.
+    UI surface — Surface the staged/role trace in the existing Super Nova panel without breaking the current view.
+    Verify — Confirm an end-to-end run completes through all stages, existing runs still pass, and typecheck is clean.
+
+Relevant files
+
+    scripts/work-tree-worker.mjs
+    scripts/super-nova-tools.mjs
+    scripts/nova-cli.mjs
+    artifacts/api-server/src/routes/work-tree.ts
+    artifacts/api-server/src/routes/nova-config.ts
+    lib/db/src/schema/work-tree.ts
+    lib/db/src/schema/index.ts
+    GOVERNANCE.json
+    EXHAUSTIVE_RECURSIVE_WORK_TREE.md
+    SOUL.md
