@@ -506,7 +506,7 @@ async function executeTerminal(run, nodes, node, priorIssues, role = "executor")
     const raw = await chatCompletion({
       messages,
       model: run.model,
-      maxTokens: 2000,
+      maxTokens: 4000,
       temperature: 0.4,
       role,
     });
@@ -553,15 +553,20 @@ async function executeTerminal(run, nodes, node, priorIssues, role = "executor")
   }
 
   // Budget exhausted — force a final answer from what was gathered.
+  // Ask for plain markdown so the report isn't trapped inside a JSON string
+  // that breaks on token-limit truncation. If the model still wraps in JSON
+  // we extract the final value; otherwise raw IS the deliverable.
   messages.push({
     role: "user",
     content:
-      'Tool budget reached. Output your best final deliverable now as {"final": "..."} — STRICT JSON only.',
+      "Tool budget reached. Write your complete final deliverable now as plain " +
+      "markdown / prose — no JSON wrapper, no {\"final\":...} container, just the " +
+      "actual deliverable content. Start writing immediately.",
   });
   const raw = await chatCompletion({
     messages,
     model: run.model,
-    maxTokens: 2000,
+    maxTokens: 6000,
     temperature: 0.4,
     role,
   });
