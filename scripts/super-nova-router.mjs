@@ -21,7 +21,10 @@
 // If a role's chosen provider isn't configured, the router falls back to bitdeer
 // (the always-present default) so a half-set override can never break a run.
 
-const DEFAULT_MODEL = process.env.WORK_TREE_MODEL || "moonshotai/Kimi-K2.6";
+// Default model for all roles. gemini-2.5-flash is fast, cheap, and returns
+// standard content (not reasoning_content), so the ReAct JSON protocol works
+// reliably. Override per-deployment with WORK_TREE_MODEL env var.
+const DEFAULT_MODEL = process.env.WORK_TREE_MODEL || "gemini-2.5-flash";
 
 // All providers speak the OpenAI /chat/completions shape. baseURL has no trailing
 // slash; key is optional only for `local` (self-hosted servers often need none).
@@ -29,6 +32,12 @@ const PROVIDERS = {
   bitdeer: {
     baseURL: process.env.BITDEER_BASE_URL || "https://api-inference.bitdeer.ai/v1",
     key: process.env.BITDEER_API_KEY || "",
+  },
+  // Google Gemini via their OpenAI-compatible endpoint (same pattern used by
+  // the api-server proxy).  Leading /v1 is stripped inside the request path.
+  gemini: {
+    baseURL: "https://generativelanguage.googleapis.com/v1beta/openai",
+    key: process.env.GEMINI_API_KEY || "",
   },
   openai: {
     baseURL: process.env.OPENAI_BASE_URL || "https://api.openai.com/v1",
@@ -99,9 +108,6 @@ export function resolveRole(role, callerModel) {
   const overrideProvider = envProvider(role);
   const roleModelEnv = process.env[`SUPER_NOVA_${role.toUpperCase()}_MODEL`];
 
-  let providerName = overrideProvider || "bitdeer";
-  let provider = PROVIDERS[providerName];
-
   // When the role is explicitly pointed at a non-default provider, the caller's
   // model (a bitdeer model id) no longer applies — use the role's configured
   // model. Otherwise prefer the caller's model, then the role env, then default.
@@ -109,14 +115,19 @@ export function resolveRole(role, callerModel) {
     ? roleModelEnv || DEFAULT_MODEL
     : callerModel || roleModelEnv || DEFAULT_MODEL;
 
+  // Auto-route gemini-* models to the Gemini provider unless the caller has
+  // explicitly pointed the role at a different provider.
+  let providerName = overrideProvider
+    || (model.startsWith("gemini-") ? "gemini" : "bitdeer");
+  let provider = PROVIDERS[providerName];
+
   if (!usable(provider, providerName)) {
     if (providerName !== "bitdeer") {
       console.warn(
         `super-nova-router: role '${role}' provider '${providerName}' not configured; falling back to bitdeer`,
       );
-      // The override's role model belonged to the failed provider (e.g. an
-      // OpenAI-only id) and is invalid on bitdeer — drop it so fallback uses a
-      // bitdeer-valid model and a half-set override can never break a run.
+      // The override's role model belonged to the failed provider — drop it so
+      // the fallback uses a bitdeer-valid model.
       model = callerModel || DEFAULT_MODEL;
     }
     providerName = "bitdeer";
@@ -191,9 +202,18 @@ export async function chatComplete({
     }
     const j = await res.json();
     const msg = j.choices?.[0]?.message;
-    // Reasoning models (Kimi-K2.6, DeepSeek-R1, o1, etc.) put output in
-    // reasoning_content when content is empty — fall back so they work transparently.
-    return msg?.content || msg?.reasoning_content || "";
+    const content = msg?.content || "";
+    if (content) return content;
+    // Some reasoning models (Kimi-K2.6, DeepSeek-R1) put the user-facing answer
+    // in reasoning_content when content is empty.  Only fall back to it when it
+    // appears to contain a complete deliverable — i.e. it has a "final" key
+    // (our ReAct protocol) or is long prose, not just a thinking-trace fragment
+    // that starts with {"thought":...} and would confuse the ReAct parser.
+    const rc = msg?.reasoning_content || "";
+    if (rc && (rc.includes('"final"') || (!rc.trimStart().startsWith("{") && rc.length > 50))) {
+      return rc;
+    }
+    return "";
   } finally {
     clearTimeout(timer);
   }
