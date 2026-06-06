@@ -29,6 +29,7 @@ function apiRun(r: Record<string, unknown>) {
     model: String(r.model ?? ""),
     report: String(r.report ?? ""),
     error: String(r.error ?? ""),
+    stageTrace: String(r.stageTrace ?? ""),
     createdAt: new Date(r.createdAt as string).toISOString(),
     updatedAt: new Date(r.updatedAt as string).toISOString(),
   };
@@ -49,6 +50,7 @@ function apiNode(n: Record<string, unknown>) {
     verification: String(n.verification ?? ""),
     attempts: Number(n.attempts ?? 0),
     trace: String(n.trace ?? ""),
+    role: String(n.role ?? ""),
     createdAt: new Date(n.createdAt as string).toISOString(),
     updatedAt: new Date(n.updatedAt as string).toISOString(),
   };

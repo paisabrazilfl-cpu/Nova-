@@ -13,6 +13,7 @@ export interface WorkTreeRun {
   model: string;
   report: string;
   error: string;
+  stageTrace: string;
   createdAt: string;
   updatedAt: string;
 }

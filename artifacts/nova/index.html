@@ -1639,6 +1639,20 @@ INPUT → Parse Tone/Workspace → Adjust Hormone/Valence Vectors → Run Active
   }
   .wt-spin { display:inline-block; width:11px; height:11px; border:2px solid rgba(34,211,238,0.3); border-top-color:var(--accent2); border-radius:50%; animation:wt-rot 0.7s linear infinite; }
   @keyframes wt-rot { to { transform:rotate(360deg); } }
+  .wt-stage-line { display:flex; align-items:center; gap:3px; margin-bottom:14px; flex-wrap:wrap; }
+  .wt-stage-arrow { font-size:9px; color:var(--muted); margin:0 1px; }
+  .wt-stage-pill { font-size:10px; padding:2px 9px; border-radius:10px; font-weight:600; letter-spacing:0.03em; cursor:default; }
+  .wt-stage-dim  { background:rgba(138,144,168,0.1); color:var(--muted); }
+  .wt-stage-plan     { background:rgba(139,92,246,0.2);  color:#c4b5fd; }
+  .wt-stage-execute  { background:rgba(34,211,238,0.15); color:var(--accent2); }
+  .wt-stage-observe  { background:rgba(251,191,36,0.15); color:#fbbf24; }
+  .wt-stage-reflect  { background:rgba(52,211,153,0.15); color:#6ee7b7; }
+  .wt-stage-critique { background:rgba(249,115,22,0.15); color:#fdba74; }
+  .wt-role-badge { font-size:9px; padding:1px 6px; border-radius:8px; font-weight:600; letter-spacing:0.02em; }
+  .wt-role-planner    { background:rgba(139,92,246,0.15); color:#c4b5fd; }
+  .wt-role-executor   { background:rgba(34,211,238,0.12); color:var(--accent2); }
+  .wt-role-researcher { background:rgba(52,211,153,0.12); color:#6ee7b7; }
+  .wt-role-critic     { background:rgba(249,115,22,0.12); color:#fdba74; }
   .wt-tool-role { display:inline-block; margin-right:6px; padding:1px 6px; border-radius:6px;
     font-size:10px; font-weight:600; letter-spacing:0.02em; text-transform:uppercase;
     color:var(--accent2); background:rgba(34,211,238,0.12); border:1px solid rgba(34,211,238,0.28); }
@@ -1737,6 +1751,23 @@ INPUT → Parse Tone/Workspace → Adjust Hormone/Valence Vectors → Run Active
       '</summary>' + rows + '</details>';
   }
 
+  function renderStageLine(stageTrace) {
+    if (!stageTrace) return '';
+    var events;
+    try { events = JSON.parse(stageTrace); } catch (_) { return ''; }
+    if (!Array.isArray(events) || !events.length) return '';
+    var STAGES = ['plan', 'execute', 'observe', 'reflect', 'critique'];
+    var seen = {};
+    events.forEach(function(e) { if (e && e.stage) seen[e.stage] = e; });
+    var pills = STAGES.map(function(s) {
+      var e = seen[s];
+      var cls = e ? 'wt-stage-pill wt-stage-' + s : 'wt-stage-pill wt-stage-dim';
+      var tip = e ? esc(String(e.summary || '')) : s + ' (pending)';
+      return '<span class="' + cls + '" title="' + tip + '">' + s.charAt(0).toUpperCase() + s.slice(1) + '</span>';
+    }).join('<span class="wt-stage-arrow">›</span>');
+    return '<div class="wt-stage-line">' + pills + '</div>';
+  }
+
   function renderTree(nodes) {
     var byParent = {};
     nodes.forEach(function (n) {
@@ -1756,10 +1787,12 @@ INPUT → Parse Tone/Workspace → Adjust Hormone/Valence Vectors → Run Active
           (n.verification ? '<div class="wt-node-verify' + verifyCls + '">Verify: ' + esc(n.verification) + '</div>' : '') +
           (canRetry ? '<button class="wt-retry-btn" data-retry-node="' + n.id + '">Retry node</button>' : '') +
           '</div>';
+        var roleBadge = n.role ? '<span class="wt-role-badge wt-role-' + esc(n.role) + '">' + esc(n.role) + '</span>' : '';
         return '<div class="wt-node" data-node-id="' + n.id + '" style="margin-left:' + (depth * 16) + 'px">' +
           '<div class="wt-node-head">' + badge(n.status) +
           '<span class="wt-node-title">' + esc(n.title) + '</span>' +
           '<span class="wt-node-kind">' + esc(n.kind) + (n.attempts ? ' · ' + n.attempts + 'x' : '') + '</span>' +
+          roleBadge +
           '</div>' + (hasBody ? body : '') +
           '</div>' + walk(n.id, depth + 1);
       }).join('');
@@ -1784,6 +1817,7 @@ INPUT → Parse Tone/Workspace → Adjust Hormone/Valence Vectors → Run Active
         '<div class="wt-detail-sub">' + badge(run.status) + ' &nbsp; ' +
         nodes.length + ' nodes · ' + done + ' done' + (failed ? ' · ' + failed + ' failed' : '') +
         (run.model ? ' · ' + esc(run.model) : '') + ' · ' + fmtDate(run.updatedAt) + '</div>';
+      html += renderStageLine(run.stageTrace || '');
 
       if (run.error) {
         html += '<div class="wt-node-verify bad" style="margin-bottom:10px;">' + esc(run.error) + '</div>';

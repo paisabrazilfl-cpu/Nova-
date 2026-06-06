@@ -20,6 +20,7 @@ export interface WorkTreeNode {
   verification: string;
   attempts: number;
   trace: string;
+  role: string;
   createdAt: string;
   updatedAt: string;
 }

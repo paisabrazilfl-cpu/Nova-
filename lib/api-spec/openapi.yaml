@@ -179,6 +179,8 @@ components:
           type: string
         error:
           type: string
+        stageTrace:
+          type: string
         createdAt:
           type: string
         updatedAt:
@@ -190,6 +192,7 @@ components:
         - model
         - report
         - error
+        - stageTrace
         - createdAt
         - updatedAt
     WorkTreeRunList:
@@ -231,6 +234,8 @@ components:
           type: integer
         trace:
           type: string
+        role:
+          type: string
         createdAt:
           type: string
         updatedAt:
@@ -249,6 +254,7 @@ components:
         - verification
         - attempts
         - trace
+        - role
         - createdAt
         - updatedAt
     WorkTreeRunDetail:

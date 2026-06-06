@@ -29,6 +29,7 @@ export const ListWorkTreeRunsResponse = zod.object({
   "model": zod.string(),
   "report": zod.string(),
   "error": zod.string(),
+  "stageTrace": zod.string(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 }))
@@ -63,6 +64,7 @@ export const GetWorkTreeRunResponse = zod.object({
   "model": zod.string(),
   "report": zod.string(),
   "error": zod.string(),
+  "stageTrace": zod.string(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 }),
@@ -80,6 +82,7 @@ export const GetWorkTreeRunResponse = zod.object({
   "verification": zod.string(),
   "attempts": zod.number(),
   "trace": zod.string(),
+  "role": zod.string(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 }))
@@ -100,6 +103,7 @@ export const CancelWorkTreeRunResponse = zod.object({
   "model": zod.string(),
   "report": zod.string(),
   "error": zod.string(),
+  "stageTrace": zod.string(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -120,6 +124,7 @@ export const RetryWorkTreeNodeResponse = zod.object({
   "model": zod.string(),
   "report": zod.string(),
   "error": zod.string(),
+  "stageTrace": zod.string(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })

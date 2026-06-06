@@ -444,8 +444,8 @@ async function decompose(run, nodes, node) {
       position: pos++,
     });
   }
-  // Composite stays "running" until its children resolve.
-  await setNode(node.id, { status: "running" });
+  // Composite stays "running" until its children resolve. Record planner role.
+  await setNode(node.id, { status: "running", role: "planner" });
   return { expanded: true };
 }
 
@@ -641,6 +641,7 @@ async function runTerminal(run, nodes, node) {
     verification: clip(verification, 2000),
     attempts: (node.attempts || 0) + 1,
     trace: serializeTrace(trace),
+    role: roleForNode(node),
   });
   return passed;
 }
@@ -705,9 +706,44 @@ async function synthesizeReport(run, nodes) {
   return `# ${run.goal}\n\n${body}`;
 }
 
+// Merge new stage events into the run's persisted stage_trace. Loads the
+// existing JSON array, appends, caps at 200 entries, and writes back. A warning
+// on failure is non-fatal — stage trace is observability metadata, not control
+// flow, so a persist error must never abort a run.
+async function persistStageLogs(runId, newEvents) {
+  if (!newEvents.length) return;
+  try {
+    const { rows } = await pool.query(
+      "SELECT stage_trace FROM work_tree_runs WHERE id = $1",
+      [runId],
+    );
+    let existing = [];
+    try {
+      existing = JSON.parse(rows[0]?.stage_trace || "[]");
+    } catch {}
+    if (!Array.isArray(existing)) existing = [];
+    const merged = existing.concat(newEvents);
+    const capped = merged.length > 200 ? merged.slice(-200) : merged;
+    await pool.query(
+      "UPDATE work_tree_runs SET stage_trace = $1, updated_at = now() WHERE id = $2",
+      [JSON.stringify(capped), runId],
+    );
+  } catch (e) {
+    console.warn(
+      `work-tree-worker: stage trace persist failed — ${e.message || e}`,
+    );
+  }
+}
+
 // Perform up to STEP_BUDGET operations across the run; returns ops performed.
+// Super Nova v2: each operation emits a stage event that is merged into the
+// run's stage_trace so the UI can show the plan→execute→observe→reflect→critique
+// pipeline in real-time.
 async function advanceRun(run) {
   let ops = 0;
+  const stageLogs = [];
+  const ts = () => new Date().toISOString();
+
   while (ops < STEP_BUDGET) {
     const current = await freshRun(run.id);
     if (!current || current.status !== "running") return ops; // cancelled, etc.
@@ -743,21 +779,44 @@ async function advanceRun(run) {
       .sort((a, b) => b.depth - a.depth)[0];
 
     if (pendingComposite) {
+      const t0 = ts();
       await decompose(current, nodes, pendingComposite);
+      stageLogs.push({
+        stage: "plan",
+        role: "planner",
+        nodeTitle: clip(pendingComposite.title, 60),
+        startedAt: t0,
+        completedAt: ts(),
+        summary: `Planned "${clip(pendingComposite.title, 60)}"`,
+      });
       ops++;
       continue;
     }
     if (pendingTerminal) {
+      const role = roleForNode(pendingTerminal);
+      const t0 = ts();
       await setNode(pendingTerminal.id, { status: "running" });
+      let execOk = true;
       try {
         await runTerminal(current, nodes, pendingTerminal);
       } catch (e) {
+        execOk = false;
         await setNode(pendingTerminal.id, {
           status: "failed",
           verification: clip(`error: ${e.message || e}`, 2000),
           attempts: (pendingTerminal.attempts || 0) + 1,
         });
       }
+      stageLogs.push({
+        stage: "execute",
+        role,
+        nodeTitle: clip(pendingTerminal.title, 60),
+        startedAt: t0,
+        completedAt: ts(),
+        summary: execOk
+          ? `Executed "${clip(pendingTerminal.title, 60)}"`
+          : `Failed: ${clip(pendingTerminal.title, 60)}`,
+      });
       ops++;
       continue;
     }
@@ -771,8 +830,37 @@ async function advanceRun(run) {
       (n) => n.kind === "terminal" && n.status === "running",
     );
     if (!anyPending && !anyRunningLeaf) {
+      // observe: all nodes settled
+      const tObs = ts();
+      stageLogs.push({
+        stage: "observe",
+        role: "planner",
+        startedAt: tObs,
+        completedAt: ts(),
+        summary: `${nodes.filter((n) => n.kind === "terminal").length} terminal nodes settled`,
+      });
+      // reflect: synthesize the final report
+      const tRef = ts();
       const report = await synthesizeReport(current, nodes);
+      stageLogs.push({
+        stage: "reflect",
+        role: "planner",
+        startedAt: tRef,
+        completedAt: ts(),
+        summary: clip(report, 120),
+      });
+      // critique: record final verification verdict
       const anyFailed = nodes.some((n) => n.status === "failed");
+      stageLogs.push({
+        stage: "critique",
+        role: "critic",
+        startedAt: ts(),
+        completedAt: ts(),
+        summary: anyFailed
+          ? "Some nodes failed verification"
+          : "All nodes verified",
+      });
+      await persistStageLogs(run.id, stageLogs);
       await setRun(run.id, {
         status: anyFailed ? "failed" : "done",
         report: clip(report, 20000),
@@ -784,8 +872,12 @@ async function advanceRun(run) {
       return ops;
     }
     // Pending exists but we couldn't act (shouldn't happen) — bail this tick.
+    // Flush any accumulated stage events so they're visible in the UI.
+    if (stageLogs.length) await persistStageLogs(run.id, stageLogs);
     return ops;
   }
+  // Budget reached — flush accumulated stage events for this tick.
+  if (stageLogs.length) await persistStageLogs(run.id, stageLogs);
   return ops;
 }
 

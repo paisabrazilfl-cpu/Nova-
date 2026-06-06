@@ -15,6 +15,9 @@ export const workTreeRunsTable = pgTable("work_tree_runs", {
   model: text("model").notNull().default(""),
   report: text("report").notNull().default(""),
   error: text("error").notNull().default(""),
+  // Super Nova v2: JSON array of {stage,role,nodeTitle?,startedAt,completedAt,summary}
+  // events captured as the run progresses through plan→execute→observe→reflect→critique.
+  stageTrace: text("stage_trace").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -25,7 +28,7 @@ export const workTreeRunsTable = pgTable("work_tree_runs", {
 });
 
 export const insertWorkTreeRunSchema = createInsertSchema(workTreeRunsTable).omit(
-  { id: true, report: true, error: true, createdAt: true, updatedAt: true },
+  { id: true, report: true, error: true, stageTrace: true, createdAt: true, updatedAt: true },
 );
 export type InsertWorkTreeRun = z.infer<typeof insertWorkTreeRunSchema>;
 export type WorkTreeRun = typeof workTreeRunsTable.$inferSelect;
@@ -50,6 +53,8 @@ export const workTreeNodesTable = pgTable("work_tree_nodes", {
   // result} records captured by the ReAct loop while executing this terminal
   // node. Empty string when the node did no tool calls (pure reasoning).
   trace: text("trace").notNull().default(""),
+  // Super Nova v2: which agent role handled this node (planner/executor/critic/researcher).
+  role: text("role").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

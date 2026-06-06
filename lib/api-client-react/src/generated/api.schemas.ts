@@ -26,6 +26,7 @@ export interface WorkTreeRun {
   model: string;
   report: string;
   error: string;
+  stageTrace: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -48,6 +49,7 @@ export interface WorkTreeNode {
   verification: string;
   attempts: number;
   trace: string;
+  role: string;
   createdAt: string;
   updatedAt: string;
 }
