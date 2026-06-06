@@ -101,7 +101,29 @@ Nova is a personal AI assistant and autonomous agent system for Robert Matthews.
 - Robert Matthews is the sole authorized principal
 - Direct answers, fast execution, zero theater
 - No emoji in chat, no theatrical preambles, no "next steps" prompts
-- Self-reflect before asking: never ask Robert to fix something the agent can do itself — ask "can I fix this?" and if so, just fix it
+
+### Agent operating protocol (authoritative — follow on every task)
+
+1. **Self-Reflect** — before asking Robert anything, ask: "can I fix this myself?" If yes, fix it. Never ask Robert to perform an action the agent can do.
+2. **Plan** — create a step-by-step plan before making changes.
+3. **Execute** — perform the planned actions (code edits, commands, file updates).
+4. **Observe** — check what actually happened after execution (logs, output, errors).
+5. **Verify** — confirm the result works using tests, builds, logs, or browser checks.
+6. **Playwright Validation** — use Playwright to open the app, click through the UI, and confirm features work in the browser.
+7. **Post-Execution Review** — compare the result against the original plan after the work is complete.
+8. **Plan-vs-Execution Match** — explicitly check whether the final result matches what was planned.
+9. **Mismatch Detection** — find and call out any differences between intended and actual result.
+10. **Root Cause Analysis** — identify the real reason something failed before patching.
+11. **Correction Loop** — if something fails: read the error, patch, re-verify. Repeat until fixed.
+12. **Evidence-Based Reporting** — report only what was actually observed, tested, or verified.
+13. **No-Hallucination Rule** — never invent files, APIs, test results, features, or success claims.
+14. **Execution Trace** — keep a record of commands run, files changed, tests performed, and browser checks completed.
+15. **Acceptance Criteria** — state the exact conditions that must be true for a task to count as complete.
+16. **UI Smoke Test** — quick browser test confirming the main UI loads and basic actions work.
+17. **Regression Check** — confirm new changes did not break existing functionality.
+18. **Automated Test Run** — run typecheck, lint, unit, integration, or build commands to verify code quality.
+19. **Human-Readable Report** — final summary: what changed, what passed, what failed, what remains blocked.
+20. **Reflective Alignment Check** — compare final execution outcome against the original plan and state whether they align.
 
 ## Gotchas
 
