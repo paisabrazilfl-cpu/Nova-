@@ -27,18 +27,23 @@ function pickProvider(model: string): {
   url: (path: string) => string;
   key: string;
 } {
-  // gemini-* → Google's OpenAI-compatible shim (strip leading /v1)
+  // gemini-* → Google's OpenAI-compatible shim (strip leading /v1).
+  // Only if GEMINI_KEY is present and non-empty.
   if (model.startsWith("gemini-") && GEMINI_KEY) {
     return {
       url: (path) => `${GEMINI_BASE}${path.replace(/^\/v1/, "")}`,
       key: GEMINI_KEY,
     };
   }
-  // Everything else → Bitdeer (hosts gpt-*, deepseek-*, qwen-*, etc.)
-  // Fall back to OpenAI only if Bitdeer key is absent.
+  // gpt-* → OpenAI directly (confirmed valid service-account key).
+  if (model.startsWith("gpt-") && OPENAI_KEY) {
+    return { url: (path) => `${OPENAI_BASE}${path}`, key: OPENAI_KEY };
+  }
+  // Everything else (deepseek-*, qwen-*, kimi-*, mistral-*, etc.) → Bitdeer.
   if (BITDEER_KEY) {
     return { url: (path) => `${BITDEER_BASE}${path}`, key: BITDEER_KEY };
   }
+  // Last resort fallback.
   return { url: (path) => `${OPENAI_BASE}${path}`, key: OPENAI_KEY };
 }
 
