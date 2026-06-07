@@ -264,19 +264,18 @@ const DATABASE_URL =
 const BITDEER_KEY = process.env.BITDEER_API_KEY;
 const BASE_URL =
   process.env.BITDEER_BASE_URL || "https://api-inference.bitdeer.ai/v1";
-const DEFAULT_MODEL = process.env.WORK_TREE_MODEL || "gemini-2.5-flash";
-const POLL_MS = Number(process.env.WORK_TREE_POLL_MS || 8000);
-// How many node operations (decompose/execute) to perform per tick. Bounded so
-// progress streams to the UI and one run can't monopolize the worker.
-const STEP_BUDGET = Number(process.env.WORK_TREE_STEP_BUDGET || 6);
+const DEFAULT_MODEL = process.env.WORK_TREE_MODEL || "gpt-4o-mini";
+const POLL_MS = Number(process.env.WORK_TREE_POLL_MS || 2000);
+// How many nodes (decompose + execute) to launch in parallel per tick.
+const STEP_BUDGET = Number(process.env.WORK_TREE_STEP_BUDGET || 10);
 // Recursion + size guards so a goal can't expand without bound.
 const MAX_DEPTH = Number(process.env.WORK_TREE_MAX_DEPTH || 3);
 const MAX_NODES = Number(process.env.WORK_TREE_MAX_NODES || 60);
-// A terminal node gets one execute + up to this many correction passes.
-const MAX_CORRECTIONS = Number(process.env.WORK_TREE_MAX_CORRECTIONS || 2);
-// Max model<->tool round trips per terminal execution attempt (Super Nova
-// ReAct loop). Bounds spend and latency so one node can't loop forever.
-const MAX_TOOL_STEPS = Number(process.env.SUPER_NOVA_MAX_TOOL_STEPS || 14);
+// A terminal node gets one execute + at most this many correction passes.
+const MAX_CORRECTIONS = Number(process.env.WORK_TREE_MAX_CORRECTIONS || 1);
+// Max model<->tool round trips per terminal execution attempt.
+// Bounded so one node can't loop forever.
+const MAX_TOOL_STEPS = Number(process.env.SUPER_NOVA_MAX_TOOL_STEPS || 8);
 // Global mutual exclusion across daemon instances. Arbitrary stable lock id.
 const ADVISORY_LOCK_ID = 778120454;
 
@@ -284,14 +283,10 @@ if (!DATABASE_URL) {
   console.error("work-tree-worker: FATAL — DATABASE_URL missing");
   process.exit(78);
 }
-// Only require a Bitdeer key when a role actually resolves to the bitdeer
-// provider. This lets every role be pointed at OpenAI/OpenRouter/a self-hosted
-// endpoint via env without a Bitdeer key, while keeping the default config
-// (all roles → bitdeer) fail-fast if the key is missing.
-const bitdeerNeeded = ROLES.some((r) => resolveRole(r).providerName === "bitdeer");
-if (bitdeerNeeded && !BITDEER_KEY) {
+// All roles route to OpenAI only (DECOMP-Ω mandate). Verify key is present.
+if (!process.env.OPENAI_API_KEY) {
   console.error(
-    "work-tree-worker: FATAL — BITDEER_API_KEY missing (a role routes to bitdeer)",
+    "work-tree-worker: FATAL — OPENAI_API_KEY missing (Super Nova runs OpenAI only)",
   );
   process.exit(78);
 }
@@ -1060,200 +1055,208 @@ async function persistStageLogs(runId, newEvents) {
   }
 }
 
-// Perform up to STEP_BUDGET operations across the run; returns ops performed.
-// Super Nova v2: each operation emits a stage event that is merged into the
-// run's stage_trace so the UI can show the plan→execute→observe→reflect→critique
-// pipeline in real-time.
+// Advance a run by launching ALL pending nodes in parallel (no sequential queue).
+// Composites are decomposed in parallel; terminals are executed in parallel.
+// After parallel execution, composites settle, then if the run is complete
+// the final report is synthesized. Stage logs are flushed at the end.
 async function advanceRun(run) {
-  let ops = 0;
   const stageLogs = [];
   const ts = () => new Date().toISOString();
 
-  while (ops < STEP_BUDGET) {
-    const current = await freshRun(run.id);
-    if (!current || current.status !== "running") return ops; // cancelled, etc.
+  const current = await freshRun(run.id);
+  if (!current || current.status !== "running") return 0;
 
-    let nodes = await loadNodes(run.id);
+  let nodes = await loadNodes(run.id);
 
-    // Seed the root from the goal on first touch.
-    if (!nodes.length) {
-      // Emit: run_started — records goal + acceptance criteria in the audit log
-      // so post-run review can check every criterion was satisfied.
-      const startPayload = {
-        runId: run.id,
-        goal: run.goal,
-        acceptanceCriteria: acceptanceCriteria(run.goal),
-        maxRunSteps: MAX_RUN_STEPS,
-        maxRunFailures: MAX_RUN_FAILURES,
-        maxCorrections: MAX_CORRECTIONS,
-        maxToolSteps: MAX_TOOL_STEPS,
-      };
-      globalAudit.write("run_started", startPayload);
-      runAudit(run.id).write("run_started", startPayload);
-
-      await insertNode({
-        runId: run.id,
-        parentId: null,
-        title: clip(run.goal, 300),
-        detail: "Root goal.",
-        kind: "composite",
-        depth: 0,
-        position: 0,
-      });
-      nodes = await loadNodes(run.id);
-    }
-
-    // Bounded autonomy — hard limits on total attempts and failures across the
-    // entire run. Derived from node data so they survive restarts correctly.
-    // Checked each iteration so over-budget runs abort promptly.
-    const totalAttempts = nodes.reduce((s, n) => s + (n.attempts || 0), 0);
-    const totalNodeFailures = nodes.filter(
-      (n) => n.kind === "terminal" && n.status === "failed",
-    ).length;
-    if (totalAttempts >= MAX_RUN_STEPS || totalNodeFailures >= MAX_RUN_FAILURES) {
-      const reason =
-        totalAttempts >= MAX_RUN_STEPS
-          ? `step budget exhausted (${totalAttempts}/${MAX_RUN_STEPS})`
-          : `failure budget exhausted (${totalNodeFailures}/${MAX_RUN_FAILURES})`;
-      const abortPayload = { runId: run.id, reason, totalAttempts, totalNodeFailures };
-      globalAudit.write("run_aborted", abortPayload);
-      runAudit(run.id).write("run_aborted", abortPayload);
-      if (stageLogs.length) await persistStageLogs(run.id, stageLogs);
-      await setRun(run.id, {
-        status: "failed",
-        error: `bounded autonomy: ${reason}`,
-      });
-      console.log(`work-tree-worker: run ${run.id} aborted — ${reason}`);
-      return ops;
-    }
-
-    // Settle composites whose children are all resolved before picking work.
-    await settleComposites(run.id);
+  // ── Seed root node on first touch ─────────────────────────────────────────
+  if (!nodes.length) {
+    const startPayload = {
+      runId: run.id,
+      goal: run.goal,
+      acceptanceCriteria: acceptanceCriteria(run.goal),
+      maxRunSteps: MAX_RUN_STEPS,
+      maxRunFailures: MAX_RUN_FAILURES,
+      maxCorrections: MAX_CORRECTIONS,
+      maxToolSteps: MAX_TOOL_STEPS,
+    };
+    globalAudit.write("run_started", startPayload);
+    runAudit(run.id).write("run_started", startPayload);
+    await insertNode({
+      runId: run.id,
+      parentId: null,
+      title: clip(run.goal, 300),
+      detail: "Root goal.",
+      kind: "composite",
+      depth: 0,
+      position: 0,
+    });
     nodes = await loadNodes(run.id);
+  }
 
-    // Pick the next actionable node: a pending composite to decompose, or a
-    // pending terminal to execute (deepest-first so leaves resolve before
-    // parents settle).
-    const pendingComposite = nodes
-      .filter((n) => n.kind === "composite" && n.status === "pending")
-      .sort((a, b) => a.depth - b.depth)[0];
-    const pendingTerminal = nodes
-      .filter((n) => n.kind === "terminal" && n.status === "pending")
-      .sort((a, b) => b.depth - a.depth)[0];
+  // ── Bounded autonomy check ─────────────────────────────────────────────────
+  const totalAttempts = nodes.reduce((s, n) => s + (n.attempts || 0), 0);
+  const totalNodeFailures = nodes.filter(
+    (n) => n.kind === "terminal" && n.status === "failed",
+  ).length;
+  if (totalAttempts >= MAX_RUN_STEPS || totalNodeFailures >= MAX_RUN_FAILURES) {
+    const reason =
+      totalAttempts >= MAX_RUN_STEPS
+        ? `step budget exhausted (${totalAttempts}/${MAX_RUN_STEPS})`
+        : `failure budget exhausted (${totalNodeFailures}/${MAX_RUN_FAILURES})`;
+    const abortPayload = { runId: run.id, reason, totalAttempts, totalNodeFailures };
+    globalAudit.write("run_aborted", abortPayload);
+    runAudit(run.id).write("run_aborted", abortPayload);
+    await setRun(run.id, { status: "failed", error: `bounded autonomy: ${reason}` });
+    console.log(`work-tree-worker: run ${run.id} aborted — ${reason}`);
+    return 0;
+  }
 
-    if (pendingComposite) {
-      const t0 = ts();
-      await decompose(current, nodes, pendingComposite);
-      stageLogs.push({
-        stage: "plan",
-        role: "planner",
-        nodeTitle: clip(pendingComposite.title, 60),
-        startedAt: t0,
-        completedAt: ts(),
-        summary: `Planned "${clip(pendingComposite.title, 60)}"`,
-      });
-      ops++;
-      continue;
-    }
-    if (pendingTerminal) {
-      const role = roleForNode(pendingTerminal);
-      const t0 = ts();
-      await setNode(pendingTerminal.id, { status: "running" });
-      let execOk = true;
-      try {
-        await runTerminal(current, nodes, pendingTerminal);
-      } catch (e) {
-        execOk = false;
-        await setNode(pendingTerminal.id, {
-          status: "failed",
-          verification: clip(`error: ${e.message || e}`, 2000),
-          attempts: (pendingTerminal.attempts || 0) + 1,
-        });
-      }
-      stageLogs.push({
-        stage: "execute",
-        role,
-        nodeTitle: clip(pendingTerminal.title, 60),
-        startedAt: t0,
-        completedAt: ts(),
-        summary: execOk
-          ? `Executed "${clip(pendingTerminal.title, 60)}"`
-          : `Failed: ${clip(pendingTerminal.title, 60)}`,
-      });
-      ops++;
-      continue;
-    }
+  // ── Settle composites before picking work ─────────────────────────────────
+  await settleComposites(run.id);
+  nodes = await loadNodes(run.id);
 
-    // No pending composite/terminal. Settle once more; if still nothing pending
-    // and no running leaves remain, the run is complete.
-    await settleComposites(run.id);
-    nodes = await loadNodes(run.id);
+  // ── Pick all actionable nodes up to STEP_BUDGET ───────────────────────────
+  const pendingComposites = nodes
+    .filter((n) => n.kind === "composite" && n.status === "pending")
+    .sort((a, b) => a.depth - b.depth)
+    .slice(0, STEP_BUDGET);
+
+  const terminalSlots = STEP_BUDGET - pendingComposites.length;
+  const pendingTerminals = nodes
+    .filter((n) => n.kind === "terminal" && n.status === "pending")
+    .sort((a, b) => b.depth - a.depth)
+    .slice(0, terminalSlots);
+
+  const totalWork = pendingComposites.length + pendingTerminals.length;
+
+  if (totalWork === 0) {
+    // Nothing actionable — check if we're done.
     const anyPending = nodes.some((n) => n.status === "pending");
     const anyRunningLeaf = nodes.some(
       (n) => n.kind === "terminal" && n.status === "running",
     );
-    if (!anyPending && !anyRunningLeaf) {
-      // observe: all nodes settled
-      const tObs = ts();
-      stageLogs.push({
-        stage: "observe",
-        role: "planner",
-        startedAt: tObs,
-        completedAt: ts(),
-        summary: `${nodes.filter((n) => n.kind === "terminal").length} terminal nodes settled`,
-      });
-      // reflect: synthesize the final report
-      const tRef = ts();
-      const report = await synthesizeReport(current, nodes);
-      stageLogs.push({
-        stage: "reflect",
-        role: "planner",
-        startedAt: tRef,
-        completedAt: ts(),
-        summary: clip(report, 120),
-      });
-      // critique: record final verification verdict
-      const anyFailed = nodes.some((n) => n.status === "failed");
-      stageLogs.push({
-        stage: "critique",
-        role: "critic",
-        startedAt: ts(),
-        completedAt: ts(),
-        summary: anyFailed
-          ? "Some nodes failed verification"
-          : "All nodes verified",
-      });
-      await persistStageLogs(run.id, stageLogs);
-      const finalStatus = anyFailed ? "failed" : "done";
-      await setRun(run.id, {
-        status: finalStatus,
-        report: clip(report, 20000),
-        error: anyFailed ? "one or more nodes failed verification" : "",
-      });
-      // Emit: run_finished — closes the audit trail for this run.
-      const finishedPayload = {
-        runId: run.id,
-        status: finalStatus,
-        totalNodes: nodes.length,
-        terminalNodes: nodes.filter((n) => n.kind === "terminal").length,
-        failedNodes: nodes.filter((n) => n.status === "failed").length,
-        totalAttempts: nodes.reduce((s, n) => s + (n.attempts || 0), 0),
-      };
-      globalAudit.write("run_finished", finishedPayload);
-      runAudit(run.id).write("run_finished", finishedPayload);
-      console.log(
-        `work-tree-worker: run ${run.id} ${finalStatus} (${nodes.length} nodes)`,
-      );
-      return ops;
+    if (!anyPending && !anyRunningLeaf && nodes.length > 0) {
+      return await finalizeRun(current, nodes, stageLogs, ts);
     }
-    // Pending exists but we couldn't act (shouldn't happen) — bail this tick.
-    // Flush any accumulated stage events so they're visible in the UI.
     if (stageLogs.length) await persistStageLogs(run.id, stageLogs);
-    return ops;
+    return 0;
   }
-  // Budget reached — flush accumulated stage events for this tick.
+
+  // ── Mark all terminals as running immediately (prevent double-pickup) ──────
+  await Promise.all(
+    pendingTerminals.map((n) => setNode(n.id, { status: "running" })),
+  );
+
+  // ── PARALLEL: decompose all pending composites + execute all pending terminals
+  await Promise.all([
+    // Decompose all pending composites simultaneously
+    ...pendingComposites.map(async (node) => {
+      const t0 = ts();
+      try {
+        await decompose(current, nodes, node);
+        stageLogs.push({
+          stage: "plan",
+          role: "planner",
+          nodeTitle: clip(node.title, 60),
+          startedAt: t0,
+          completedAt: ts(),
+          summary: `Planned "${clip(node.title, 60)}"`,
+        });
+      } catch (e) {
+        console.error(`work-tree-worker: decompose node ${node.id} failed — ${e.message || e}`);
+        await setNode(node.id, { status: "failed", result: clip(String(e.message || e), 1000) }).catch(() => {});
+      }
+    }),
+    // Execute all pending terminals simultaneously
+    ...pendingTerminals.map(async (node) => {
+      const role = roleForNode(node);
+      const t0 = ts();
+      let execOk = true;
+      try {
+        await runTerminal(current, nodes, node);
+      } catch (e) {
+        execOk = false;
+        await setNode(node.id, {
+          status: "failed",
+          verification: clip(`error: ${e.message || e}`, 2000),
+          attempts: (node.attempts || 0) + 1,
+        }).catch(() => {});
+      }
+      stageLogs.push({
+        stage: "execute",
+        role,
+        nodeTitle: clip(node.title, 60),
+        startedAt: t0,
+        completedAt: ts(),
+        summary: execOk
+          ? `Executed "${clip(node.title, 60)}"`
+          : `Failed: ${clip(node.title, 60)}`,
+      });
+    }),
+  ]);
+
+  // ── Settle after parallel execution, then check completion ────────────────
+  await settleComposites(run.id);
+  nodes = await loadNodes(run.id);
+
+  const anyPendingAfter = nodes.some((n) => n.status === "pending");
+  const anyRunningLeafAfter = nodes.some(
+    (n) => n.kind === "terminal" && n.status === "running",
+  );
+  if (!anyPendingAfter && !anyRunningLeafAfter && nodes.length > 0) {
+    return await finalizeRun(current, nodes, stageLogs, ts);
+  }
+
   if (stageLogs.length) await persistStageLogs(run.id, stageLogs);
-  return ops;
+  return totalWork;
+}
+
+// Synthesize final report, persist status, emit audit event.
+async function finalizeRun(run, nodes, stageLogs, ts) {
+  const tObs = ts();
+  stageLogs.push({
+    stage: "observe",
+    role: "planner",
+    startedAt: tObs,
+    completedAt: ts(),
+    summary: `${nodes.filter((n) => n.kind === "terminal").length} terminal nodes settled`,
+  });
+  const tRef = ts();
+  const report = await synthesizeReport(run, nodes);
+  stageLogs.push({
+    stage: "reflect",
+    role: "planner",
+    startedAt: tRef,
+    completedAt: ts(),
+    summary: clip(report, 120),
+  });
+  const anyFailed = nodes.some((n) => n.status === "failed");
+  stageLogs.push({
+    stage: "critique",
+    role: "critic",
+    startedAt: ts(),
+    completedAt: ts(),
+    summary: anyFailed ? "Some nodes failed verification" : "All nodes verified",
+  });
+  await persistStageLogs(run.id, stageLogs);
+  const finalStatus = anyFailed ? "failed" : "done";
+  await setRun(run.id, {
+    status: finalStatus,
+    report: clip(report, 20000),
+    error: anyFailed ? "one or more nodes failed verification" : "",
+  });
+  const finishedPayload = {
+    runId: run.id,
+    status: finalStatus,
+    totalNodes: nodes.length,
+    terminalNodes: nodes.filter((n) => n.kind === "terminal").length,
+    failedNodes: nodes.filter((n) => n.status === "failed").length,
+    totalAttempts: nodes.reduce((s, n) => s + (n.attempts || 0), 0),
+  };
+  globalAudit.write("run_finished", finishedPayload);
+  runAudit(run.id).write("run_finished", finishedPayload);
+  console.log(`work-tree-worker: run ${run.id} ${finalStatus} (${nodes.length} nodes)`);
+  return nodes.length;
 }
 
 let running = false;
@@ -1281,20 +1284,24 @@ async function tick() {
     }
 
     // Promote one pending run to running per tick (gated by the daily run cap),
-    // then advance all running runs.
+    // then advance ALL running runs in parallel (no sequential queue across runs).
     await claimRun(gov.cap);
     const runs = await runningRuns();
-    for (const r of runs) {
-      try {
-        await advanceRun(r);
-      } catch (e) {
-        console.error(`work-tree-worker: run ${r.id} error — ${e.message || e}`);
-        await setRun(r.id, {
-          status: "failed",
-          error: clip(String(e.message || e), 1000),
-        }).catch(() => {});
-      }
-    }
+    const opsResults = await Promise.all(
+      runs.map((r) =>
+        advanceRun(r).catch((e) => {
+          console.error(`work-tree-worker: run ${r.id} error — ${e.message || e}`);
+          return setRun(r.id, {
+            status: "failed",
+            error: clip(String(e.message || e), 1000),
+          }).catch(() => {}).then(() => 0);
+        }),
+      ),
+    );
+    // Hot-loop: if any run did real work, fire the next tick immediately
+    // (don't wait POLL_MS) so progress is continuous while tasks are active.
+    const totalOps = opsResults.reduce((s, n) => s + (n || 0), 0);
+    if (totalOps > 0) setImmediate(() => tick());
   } catch (e) {
     console.error("work-tree-worker: tick error", e.message || e);
   } finally {
@@ -1309,8 +1316,9 @@ async function tick() {
 }
 
 console.log(
-  `work-tree-worker: ready — model ${DEFAULT_MODEL}, poll ${POLL_MS}ms, ` +
-    `budget ${STEP_BUDGET}, maxDepth ${MAX_DEPTH}, maxNodes ${MAX_NODES}`,
+  `work-tree-worker: ready [DECOMP-Ω / PARALLEL] — model ${DEFAULT_MODEL}, poll ${POLL_MS}ms, ` +
+    `budget ${STEP_BUDGET} parallel, maxDepth ${MAX_DEPTH}, maxNodes ${MAX_NODES}, ` +
+    `maxCorrections ${MAX_CORRECTIONS}, maxToolSteps ${MAX_TOOL_STEPS}`,
 );
 console.log(`work-tree-worker: roles — ${routerSummary()}`);
 await tick();
