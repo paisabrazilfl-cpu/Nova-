@@ -196,6 +196,20 @@ Background reasoning
   `DEEP_WORKER_CONCURRENCY`, `DEEP_WORKER_POLL_MS`,
   `DEEP_WORKER_TIMEOUT_MS`. Log at `/tmp/deep-worker.log`.
 
+  HTTP API ("SUPER NOVA" in the chat UI): the daemon also serves a
+  small HTTP facade over the same file queue on port 8790 (env
+  `DEEP_WORKER_HTTP_PORT`), published on the Fly app at
+  `https://snbm.fly.dev:8443`. Auth: `Authorization: Bearer
+  $OPENCLAW_GATEWAY_TOKEN` (API disabled if the token env is unset).
+    POST /jobs        { "prompt": "...", "model"?, "systemPrompt"?,
+                        "maxTokens"? }            -> 202 { "id" }
+    GET  /jobs/<id>   -> { "status": "pending" | "running" | "done"
+                           | "failed", ...result fields }
+    GET  /healthz     -> { "ok": true }            (no auth)
+  The chat UI's Super Nova toggle (sparkle button in the composer)
+  routes a message through this API and renders the result inline,
+  labeled SUPER NOVA.
+
 ## Routing logic — IF / THEN / ELSE
 
 Resolve top to bottom. First matching rule wins.

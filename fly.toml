@@ -22,6 +22,20 @@ auto_start_machines = true
 min_machines_running = 1
 processes = ["app"]
 
+# Super Nova deep-worker HTTP API: job submit/poll for the chat UI.
+# Same machine, separate daemon — reachable at https://snbm.fly.dev:8443.
+[[services]]
+internal_port = 8790
+protocol = "tcp"
+auto_stop_machines = false
+auto_start_machines = true
+min_machines_running = 1
+processes = ["app"]
+
+  [[services.ports]]
+  port = 8443
+  handlers = ["tls", "http"]
+
 [[vm]]
 size = "shared-cpu-2x"
 memory = "2048mb"

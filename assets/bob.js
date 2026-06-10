@@ -1298,6 +1298,7 @@ const DEFAULT_SETTINGS = {
   mode: 'gateway',
   gatewayUrl: (typeof window !== 'undefined' ? window.location.origin : ''),
   gatewayToken: '{env:OPENCLAW_GATEWAY_TOKEN}',
+  deepUrl: '',
   openaiKey: '{env:OPENAI_API_KEY}',
   ttsVoice: 'nova',
   voiceName: '',
@@ -1321,6 +1322,8 @@ let wsConnected = false;
 let wsCounter = 0;
 let recognition = null;
 let listening = false;
+let deepMode = false;
+let deepRun = null;
 let selectedVoice = null;
 let voicesList = [];
 
@@ -1337,6 +1340,7 @@ const statusLabel     = document.getElementById('status-label');
 const chatInner       = document.getElementById('chat-inner');
 const userInput       = document.getElementById('user-input');
 const micBtn          = document.getElementById('mic-btn');
+const deepBtn         = document.getElementById('deep-btn');
 const ttsBtn          = document.getElementById('tts-btn');
 const stopBtn         = document.getElementById('stop-btn');
 const sendBtn         = document.getElementById('send-btn');
@@ -1352,6 +1356,7 @@ const sRateVal        = document.getElementById('s-rate-val');
 const sSystemPrompt   = document.getElementById('s-system-prompt');
 const sGatewayUrl     = document.getElementById('s-gateway-url');
 const sGatewayToken   = document.getElementById('s-gateway-token');
+const sDeepUrl        = document.getElementById('s-deep-url');
 const gatewayFields   = document.getElementById('gateway-fields');
 const modeTabs        = document.querySelectorAll('.mode-tab');
 const toastContainer  = document.getElementById('toast-container');
@@ -1686,7 +1691,7 @@ function appendMessageEl(msg, isStreaming) {
           ${isStreaming ? '<span class="cursor"></span>' : ''}
         </div>
         <div class="msg-meta">
-          <span class="model-label">NOVA</span>
+          <span class="model-label">${msg.via === 'supernova' ? 'SUPER NOVA' : 'NOVA'}</span>
           <div class="msg-actions">
             <button class="action-btn copy-btn" title="Copy">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1845,7 +1850,9 @@ async function sendMessage() {
     console.warn('workspace context failed', e);
   }
 
-  if (settings.mode === 'gateway') {
+  if (deepMode) {
+    await sendSuperNova(wrapped, chat);
+  } else if (settings.mode === 'gateway') {
     sendGateway(wrapped, chat);
   } else {
     await sendDirect(wrapped, chat);
@@ -1952,8 +1959,9 @@ async function sendDirect(text, chat) {
   }
 }
 
-function finalizeBotMessage(text, chat) {
+function finalizeBotMessage(text, chat, via) {
   const botMsg = { id: genId(), role: 'assistant', content: text, ts: now() };
+  if (via) botMsg.via = via;
   chat.messages.push(botMsg);
   saveChats();
   updateStreamingRow(text, true);
@@ -1994,7 +2002,9 @@ function regenerate() {
   if (rows.length) rows[rows.length - 1].remove();
   const lastUser = chat.messages[chat.messages.length - 1];
   if (!lastUser || lastUser.role !== 'user') return;
-  if (settings.mode === 'gateway') {
+  if (deepMode) {
+    sendSuperNova(lastUser.content, chat);
+  } else if (settings.mode === 'gateway') {
     sendGateway(lastUser.content, chat);
   } else {
     sendDirect(lastUser.content, chat);
@@ -2121,10 +2131,108 @@ function endGatewayStream(text, chat) {
   if (ws) { try { ws.close(); } catch {} ws = null; }
 }
 
+// ── Super Nova (deep worker) ─────────────────────────────────────────────────
+// Dispatches the message as a job to the deep-worker daemon's HTTP API and
+// polls until the result is ready, then drops it inline as a bot message
+// labeled SUPER NOVA. The worker is stateless, so recent conversation is
+// folded into the prompt.
+function deepWorkerBase() {
+  const explicit = (settings.deepUrl || '').trim().replace(/\/$/, '');
+  if (explicit) return explicit;
+  try {
+    const u = new URL(settings.gatewayUrl || window.location.origin);
+    return u.protocol + '//' + u.hostname + ':8443';
+  } catch {
+    return '';
+  }
+}
+
+function buildDeepPrompt(text, chat) {
+  const recent = chat.messages
+    .filter(m => m.role === 'user' || m.role === 'assistant')
+    .slice(-9, -1)
+    .map(m => (m.role === 'user' ? 'Robert: ' : 'NOVA: ') + m.content);
+  if (!recent.length) return text;
+  return 'Recent conversation for context:\n\n' + recent.join('\n\n') + '\n\n---\nTask from Robert:\n' + text;
+}
+
+async function sendSuperNova(text, chat) {
+  const base = deepWorkerBase();
+  if (!base) {
+    toast('No Super Nova URL set. Open Settings to add one.', true);
+    openSettings();
+    return;
+  }
+
+  streaming = true;
+  updateButtons();
+  setStatus('SUPER NOVA — dispatching…', 'connecting');
+
+  const row = appendStreamingRow();
+  const rowLabel = row.querySelector('.model-label');
+  if (rowLabel) rowLabel.textContent = 'SUPER NOVA';
+
+  const run = { cancelled: false };
+  deepRun = run;
+  const headers = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + settings.gatewayToken };
+  const t0 = Date.now();
+  const DEADLINE_MS = 10 * 60 * 1000;
+
+  try {
+    const res = await fetch(base + '/jobs', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ prompt: buildDeepPrompt(text, chat) })
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      throw new Error(`HTTP ${res.status}: ${errText.slice(0, 200)}`);
+    }
+    const { id } = await res.json();
+
+    setStatus('SUPER NOVA — reasoning deeply…', 'connected');
+    while (!run.cancelled && Date.now() - t0 < DEADLINE_MS) {
+      await new Promise(r => setTimeout(r, 3000));
+      if (run.cancelled) break;
+      let j;
+      try {
+        const poll = await fetch(`${base}/jobs/${id}`, { headers });
+        if (!poll.ok) throw new Error('HTTP ' + poll.status);
+        j = await poll.json();
+      } catch {
+        continue; // transient poll failure — keep waiting
+      }
+      if (j.status === 'done') {
+        finalizeBotMessage(j.result || '(empty result)', chat, 'supernova');
+        return;
+      }
+      if (j.status === 'failed') throw new Error(j.error || 'deep job failed');
+      setStatus(`SUPER NOVA — reasoning deeply… ${Math.round((Date.now() - t0) / 1000)}s`, 'connected');
+    }
+    if (run.cancelled) {
+      const sr = document.getElementById('streaming-row');
+      if (sr) sr.remove();
+      return;
+    }
+    throw new Error('timed out after 10 minutes — check `nova jobs ls` on the box');
+  } catch (err) {
+    const sr = document.getElementById('streaming-row');
+    if (sr) sr.remove();
+    toast('SUPER NOVA error: ' + err.message, true);
+    setStatus('Error', 'error');
+  } finally {
+    if (deepRun === run) deepRun = null;
+    streaming = false;
+    updateButtons();
+    if (statusLabel.textContent.indexOf('SUPER NOVA') === 0) setStatus('Ready', '');
+  }
+}
+
 // ── Stop ──────────────────────────────────────────────────────────────────────
 function stopAll() {
   stopSpeech();
   if (abortController) abortController.abort();
+  if (deepRun) { deepRun.cancelled = true; deepRun = null; }
   if (ws) { try { ws.close(); } catch {} ws = null; }
   streaming = false;
   updateButtons();
@@ -2136,6 +2244,7 @@ function updateButtons() {
   sendBtn.disabled = streaming;
   stopBtn.classList.toggle('visible', streaming);
   ttsBtn.classList.toggle('active', settings.ttsEnabled);
+  if (deepBtn) deepBtn.classList.toggle('active', deepMode);
 }
 
 // ── Speech-to-text ────────────────────────────────────────────────────────────
@@ -2248,6 +2357,7 @@ function openSettings() {
   sSystemPrompt.value = settings.systemPrompt || DEFAULT_SETTINGS.systemPrompt;
   sGatewayUrl.value = settings.gatewayUrl || DEFAULT_SETTINGS.gatewayUrl;
   sGatewayToken.value = settings.gatewayToken || '';
+  sDeepUrl.value = settings.deepUrl || '';
 
   modeTabs.forEach(t => t.classList.toggle('active', t.dataset.mode === settings.mode));
   gatewayFields.classList.toggle('visible', settings.mode === 'gateway');
@@ -2270,6 +2380,7 @@ function saveAndClose() {
   settings.systemPrompt = sSystemPrompt.value;
   settings.gatewayUrl   = sGatewayUrl.value.trim() || DEFAULT_SETTINGS.gatewayUrl;
   settings.gatewayToken = sGatewayToken.value.trim();
+  settings.deepUrl      = sDeepUrl.value.trim();
   settings.voiceName    = sVoice.value;
 
   if (sVoice.value) {
@@ -2297,6 +2408,14 @@ saveSettingsBtn.addEventListener('click', saveAndClose);
 sendBtn.addEventListener('click', sendMessage);
 stopBtn.addEventListener('click', stopAll);
 micBtn.addEventListener('click', startListening);
+if (deepBtn) deepBtn.addEventListener('click', () => {
+  deepMode = !deepMode;
+  updateButtons();
+  userInput.placeholder = deepMode ? 'Message SUPER NOVA…' : 'Message NOVA…';
+  toast(deepMode
+    ? 'SUPER NOVA on — messages go to the deep reasoning worker'
+    : 'SUPER NOVA off — back to live chat');
+});
 ttsBtn.addEventListener('click', () => {
   settings.ttsEnabled = !settings.ttsEnabled;
   saveSettings();

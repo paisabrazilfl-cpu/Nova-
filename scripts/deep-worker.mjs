@@ -37,6 +37,8 @@
 //   }
 
 import { readdir, readFile, writeFile, rename, mkdir, stat, unlink } from "node:fs/promises";
+import { createServer } from "node:http";
+import { randomBytes } from "node:crypto";
 import path from "node:path";
 
 const STATE_DIR = process.env.OPENCLAW_STATE_DIR || "/data";
@@ -164,6 +166,121 @@ async function processJob(name) {
   }
 }
 
+// ── HTTP API ─────────────────────────────────────────────────────────────
+// Thin facade over the same file queue, so clients without filesystem
+// access — the NOVA chat UI in the browser — can dispatch and poll jobs.
+// Exposed on the Fly app as its own public port (see fly.toml). Auth is
+// the gateway token; without OPENCLAW_GATEWAY_TOKEN in the env the API
+// stays off rather than listen unauthenticated.
+const HTTP_PORT = Number(process.env.DEEP_WORKER_HTTP_PORT || 8790);
+const HTTP_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN || "";
+const MAX_PROMPT_CHARS = 200_000;
+
+function cors(res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
+}
+
+function sendJson(res, code, obj) {
+  cors(res);
+  res.writeHead(code, { "Content-Type": "application/json" });
+  res.end(JSON.stringify(obj));
+}
+
+function newJobId() {
+  return new Date().toISOString().replace(/[:.]/g, "-") + "-" + randomBytes(4).toString("hex");
+}
+
+async function readJobFile(dir, id) {
+  try { return JSON.parse(await readFile(path.join(dir, `${id}.json`), "utf8")); }
+  catch { return null; }
+}
+
+async function handleHttp(req, res) {
+  if (req.method === "OPTIONS") {
+    cors(res);
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+  const url = new URL(req.url, "http://localhost");
+
+  if (req.method === "GET" && url.pathname === "/healthz") {
+    sendJson(res, 200, { ok: true, inFlight: inFlight.size });
+    return;
+  }
+
+  const auth = req.headers.authorization || "";
+  if (auth !== `Bearer ${HTTP_TOKEN}`) {
+    sendJson(res, 401, { error: "unauthorized" });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/jobs") {
+    let raw = "";
+    for await (const chunk of req) {
+      raw += chunk;
+      if (raw.length > MAX_PROMPT_CHARS + 10_000) {
+        sendJson(res, 413, { error: "payload too large" });
+        return;
+      }
+    }
+    let body;
+    try { body = JSON.parse(raw); }
+    catch { sendJson(res, 400, { error: "invalid JSON" }); return; }
+    const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
+    if (!prompt) { sendJson(res, 400, { error: "prompt required" }); return; }
+    if (prompt.length > MAX_PROMPT_CHARS) { sendJson(res, 413, { error: "prompt too large" }); return; }
+    const id = newJobId();
+    const job = {
+      id,
+      prompt,
+      submittedAt: Date.now(),
+      source: "http"
+    };
+    if (typeof body.systemPrompt === "string" && body.systemPrompt.trim()) job.systemPrompt = body.systemPrompt;
+    if (typeof body.model === "string" && body.model.trim()) job.model = body.model.trim();
+    if (Number.isFinite(body.maxTokens) && body.maxTokens > 0) job.maxTokens = Math.min(body.maxTokens, 32_768);
+    await writeFile(path.join(PENDING_DIR, `${id}.json`), JSON.stringify(job, null, 2));
+    console.log(`deep-worker: http job ${id} queued (${prompt.length} chars)`);
+    sendJson(res, 202, { id, status: "pending" });
+    return;
+  }
+
+  const jobMatch = req.method === "GET" && url.pathname.match(/^\/jobs\/([A-Za-z0-9_-]+)$/);
+  if (jobMatch) {
+    const id = jobMatch[1];
+    const done = await readJobFile(DONE_DIR, id);
+    if (done) { sendJson(res, 200, { status: "done", ...done }); return; }
+    const failed = await readJobFile(FAILED_DIR, id);
+    if (failed) { sendJson(res, 200, { status: "failed", ...failed }); return; }
+    if (await readJobFile(RUNNING_DIR, id)) { sendJson(res, 200, { id, status: "running" }); return; }
+    if (await readJobFile(PENDING_DIR, id)) { sendJson(res, 200, { id, status: "pending" }); return; }
+    sendJson(res, 404, { error: "unknown job", id });
+    return;
+  }
+
+  sendJson(res, 404, { error: "not found" });
+}
+
+function startHttp() {
+  if (!HTTP_TOKEN) {
+    console.error("deep-worker: OPENCLAW_GATEWAY_TOKEN missing — HTTP API disabled");
+    return;
+  }
+  const server = createServer((req, res) => {
+    handleHttp(req, res).catch(e => {
+      console.error("deep-worker: http error", e);
+      try { sendJson(res, 500, { error: "internal error" }); } catch {}
+    });
+  });
+  server.listen(HTTP_PORT, "0.0.0.0", () => {
+    console.log(`deep-worker: HTTP API listening on :${HTTP_PORT}`);
+  });
+  server.on("error", e => console.error("deep-worker: http server error", e));
+}
+
 const inFlight = new Set();
 async function tick() {
   if (inFlight.size >= MAX_CONCURRENT) return;
@@ -179,6 +296,7 @@ async function tick() {
 }
 
 await ensureDirs();
+startHttp();
 console.log(`deep-worker: ready — default model ${DEFAULT_MODEL}, concurrency ${MAX_CONCURRENT}, poll ${POLL_MS}ms`);
 setInterval(() => tick().catch(e => console.error("deep-worker: poll error", e)), POLL_MS);
 
