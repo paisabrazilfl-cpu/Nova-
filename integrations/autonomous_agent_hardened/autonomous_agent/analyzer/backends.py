@@ -160,6 +160,38 @@ class MistralBackend(_HTTPJSONBackend):
         return str(data["choices"][0]["message"]["content"])  # type: ignore[index]
 
 
+class SupernovaSwarmBackend(_HTTPJSONBackend):
+    """NEWSUPERNOVA / SUPERNOVA agent swarm.
+
+    The swarm exposes an OpenAI-compatible endpoint, so the wire format is
+    identical to OpenAIBackend: POST {base_url}/chat/completions with Bearer
+    auth, reading choices[0].message.content. Point `model` at an agent name
+    (abby = orchestrator; also forge/crawler/vault/wire/mr.nice). The API key
+    is the swarm's OPENCLAW_API_KEY, supplied via AGENT_LLM_API_KEY — never
+    hardcoded here.
+    """
+
+    backend_name = "swarm"
+    default_base_url = "https://supernova.onrender.com/api/external/v1"
+    default_model = "abby"
+
+    def _complete_once(self, prompt: str) -> str:
+        data = self._post(
+            f"{self.base_url}/chat/completions",
+            {
+                "model": self.model,
+                "temperature": self.config.llm.temperature,
+                "max_tokens": self.config.llm.max_tokens,
+                "messages": [
+                    {"role": "system", "content": "You are an evidence-first coding agent. Return strict JSON when requested."},
+                    {"role": "user", "content": prompt},
+                ],
+            },
+            {"Authorization": f"Bearer {self.api_key}"},
+        )
+        return str(data["choices"][0]["message"]["content"])  # type: ignore[index]
+
+
 class RouterBackend:
     """Try several AI providers in order. First successful response wins."""
 
@@ -188,6 +220,8 @@ def build_backend(config: Config) -> LLMBackend:
         return AnthropicBackend(config)
     if backend == "mistral":
         return MistralBackend(config)
+    if backend in {"swarm", "supernova", "newsupernova"}:
+        return SupernovaSwarmBackend(config)
     if backend in {"router", "multi", "moe"}:
         # Deliberately conservative: each provider still needs credentials/base URL.
         candidates: list[LLMBackend] = []

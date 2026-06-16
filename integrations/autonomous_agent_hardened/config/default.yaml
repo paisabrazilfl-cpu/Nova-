@@ -9,8 +9,15 @@ agent:
   autonomy_level: level_1_local_patch
 
 llm:
-  backend: disabled
-  model: null
+  # "swarm" routes planning/analysis to the NEWSUPERNOVA agent swarm over its
+  # OpenAI-compatible API. base_url defaults to
+  # https://supernova.onrender.com/api/external/v1 and model defaults to "abby"
+  # (the orchestrator). Supply the swarm's OPENCLAW_API_KEY via
+  # AGENT_LLM_API_KEY. With no key the backend fails closed and the runtime
+  # falls back to a deterministic plan. Override via AGENT_LLM_BACKEND /
+  # AGENT_LLM_BASE_URL / AGENT_LLM_MODEL.
+  backend: swarm
+  model: abby
   temperature: 0.1
   max_tokens: 4096
   timeout_seconds: 120
