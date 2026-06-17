@@ -269,16 +269,17 @@ body {
 .sidebar-footer {
   padding: 12px; border-top: 1px solid var(--border);
 }
-#settings-btn, #worktree-btn {
+#settings-btn, #worktree-btn, #supernova-link-btn {
   width: 100%; padding: 9px 12px;
   background: transparent; border: 1px solid var(--border);
   border-radius: 9px; color: var(--muted); font-size: 0.82rem;
   cursor: pointer; display: flex; align-items: center; gap: 8px;
   transition: background 0.12s, color 0.12s, border-color 0.12s;
+  text-decoration: none;
 }
-#worktree-btn { margin-bottom: 8px; }
-#settings-btn:hover, #worktree-btn:hover { background: var(--surface2); color: var(--text); border-color: var(--border-strong); }
-#settings-btn svg, #worktree-btn svg { width: 15px; height: 15px; }
+#worktree-btn, #supernova-link-btn { margin-bottom: 8px; }
+#settings-btn:hover, #worktree-btn:hover, #supernova-link-btn:hover { background: var(--surface2); color: var(--text); border-color: var(--border-strong); }
+#settings-btn svg, #worktree-btn svg, #supernova-link-btn svg { width: 15px; height: 15px; }
 
 /* ── Main Area ──────────────────────────────────────────────────────────── */
 #main {
@@ -618,6 +619,15 @@ body {
   transition: background 0.12s; align-self: flex-end;
 }
 #save-settings-btn:hover { background: #7c5cff; }
+#open-supernova-btn {
+  padding: 10px 16px; background: transparent; border: 1px solid var(--border-strong);
+  border-radius: 8px; color: var(--text); font-size: 0.88rem; font-weight: 600;
+  cursor: pointer; text-decoration: none; align-self: flex-end;
+  display: inline-flex; align-items: center; gap: 8px;
+  transition: background 0.12s, border-color 0.12s;
+}
+#open-supernova-btn:hover { background: var(--surface2); border-color: var(--accent); }
+#open-supernova-btn svg { width: 16px; height: 16px; }
 
 /* Gateway fields */
 #gateway-fields { display: none; flex-direction: column; gap: 12px; }
@@ -933,6 +943,14 @@ body {
   </div>
 
   <div class="sidebar-footer">
+    <a id="supernova-link-btn" href="https://supernova-ekbj.onrender.com" target="_blank" rel="noopener noreferrer">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 3h7v7"/>
+        <path d="M21 3l-9 9"/>
+        <path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/>
+      </svg>
+      Super Nova
+    </a>
     <button id="worktree-btn">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="4" r="2"/>
@@ -940,7 +958,7 @@ body {
         <circle cx="18" cy="20" r="2"/>
         <path d="M12 6v4M12 10c0 2-6 2-6 8M12 10c0 2 6 2 6 8"/>
       </svg>
-      Super Nova
+      Work Tree
     </button>
     <button id="settings-btn">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -1150,6 +1168,14 @@ body {
       <div class="ws-tiny ws-muted" id="intg-msg" style="margin-top:6px;"></div>
     </div>
 
+    <a id="open-supernova-btn" href="https://supernova-ekbj.onrender.com" target="_blank" rel="noopener noreferrer">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 3h7v7"/>
+        <path d="M21 3l-9 9"/>
+        <path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/>
+      </svg>
+      Open Super Nova
+    </a>
     <button id="save-settings-btn">Save Settings</button>
   </div>
 </div>
