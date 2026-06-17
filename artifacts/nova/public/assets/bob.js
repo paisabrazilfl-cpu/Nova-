@@ -2150,8 +2150,9 @@ let recordedChunks = [];
 async function startListening() {
   if (listening) { stopListening(); return; }
   stopSpeech();
-  const key = settings.openaiKey;
-  const useWhisper = key && !key.includes('{env:') && navigator.mediaDevices && window.MediaRecorder;
+  // Whisper runs through NOVA's server (it holds the OpenAI key) — no browser
+  // key needed. We just need mic + MediaRecorder support.
+  const useWhisper = navigator.mediaDevices && window.MediaRecorder;
 
   if (useWhisper) {
     try {
@@ -2167,19 +2168,19 @@ async function startListening() {
         if (!recordedChunks.length) return;
         const blob = new Blob(recordedChunks, { type: mime });
         recordedChunks = [];
-        const form = new FormData();
-        const ext = mime.includes('mp4') ? 'm4a' : 'webm';
-        form.append('file', blob, `clip.${ext}`);
-        form.append('model', 'whisper-1');
-        form.append('language', 'en');
         setStatus('Transcribing…', 'connecting');
         try {
-          const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+          // Send raw audio to NOVA's server, which calls Whisper with its key.
+          const res = await fetch('/api/voice/transcribe', {
             method: 'POST',
-            headers: { 'Authorization': 'Bearer ' + key },
-            body: form
+            headers: { 'Content-Type': mime },
+            body: blob
           });
-          if (!res.ok) throw new Error('Whisper HTTP ' + res.status);
+          if (!res.ok) {
+            let detail = '';
+            try { detail = (await res.json()).error || ''; } catch {}
+            throw new Error('Transcribe HTTP ' + res.status + (detail ? ' — ' + detail : ''));
+          }
           const j = await res.json();
           const txt = (j && j.text ? j.text : '').trim();
           if (txt) {

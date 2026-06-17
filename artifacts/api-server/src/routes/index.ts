@@ -6,12 +6,14 @@ import workTreeRouter from "./work-tree";
 import integrationsRouter from "./integrations";
 import knowledgeRouter from "./knowledge";
 import openaiProxyRouter from "./openai-proxy";
+import voiceRouter from "./voice";
 import { requireWtAuth } from "../lib/work-tree-auth";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use(novaConfigRouter);
+router.use(voiceRouter);
 router.use(scratchpadRouter);
 router.use(workTreeRouter);
 // The credential store and knowledge base are sensitive (they hold Robert's API
