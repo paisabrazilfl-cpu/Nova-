@@ -63,8 +63,38 @@ export interface IngestOpts {
 // unbounded document would let a single request rack up cost/latency.
 const MAX_CHUNKS_PER_INGEST = 60;
 
+// Idempotently ensure the pgvector extension + knowledge_chunks table exist.
+// Self-heals databases that never ran the drizzle migration (so cross-app
+// "save to NOVA workspace" works on a fresh DB). Runs once per process.
+let schemaReady: Promise<void> | null = null;
+export function ensureKnowledgeSchema(): Promise<void> {
+  if (!schemaReady) {
+    schemaReady = (async () => {
+      await db.execute(sql`CREATE EXTENSION IF NOT EXISTS vector`);
+      await db.execute(sql`CREATE TABLE IF NOT EXISTS knowledge_chunks (
+        id serial PRIMARY KEY,
+        source text NOT NULL DEFAULT 'manual',
+        external_id text,
+        title text NOT NULL DEFAULT '',
+        content text NOT NULL DEFAULT '',
+        embedding vector(1536),
+        metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+        created_at timestamptz NOT NULL DEFAULT now()
+      )`);
+      await db.execute(
+        sql`CREATE INDEX IF NOT EXISTS knowledge_chunks_embedding_idx ON knowledge_chunks USING hnsw (embedding vector_cosine_ops)`,
+      );
+    })().catch((e) => {
+      schemaReady = null; // allow retry on next call
+      throw e;
+    });
+  }
+  return schemaReady;
+}
+
 // Chunk → embed → store. Returns the inserted row ids.
 export async function ingestText(opts: IngestOpts): Promise<number[]> {
+  await ensureKnowledgeSchema();
   const chunks = chunkText(opts.content);
   if (chunks.length > MAX_CHUNKS_PER_INGEST) {
     throw new Error(
